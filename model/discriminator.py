@@ -41,11 +41,7 @@ class Discriminator(nn.Module):
 
     self.encoder = []
 
-    # input layer
-    # self.encoder.append(
-    #   LinearLayer(in_features=n_inputs, out_features=n_output, norm_type='none', activation=activation, alpha_relu=alpha_relu, norm_before=norm_before, use_bias=use_bias)
-    # )
-    
+    # input layer    
     self.encoder.append(
       ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                         activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
