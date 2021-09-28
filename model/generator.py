@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Module, Linear, Conv2d
 from torch.nn import Softmax, ReLU, LeakyReLU, Sigmoid, Tanh
-from models.block import LinearLayer, ConvResidualBlock
+from model.block import Conv2DLayer, ConvResidualBlock
 
 import functools
 import operator
@@ -18,7 +18,7 @@ class Generator(nn.Module):
                 activation='lk_relu', 
                 alpha_relu=0.15, 
                 use_bias=True,
-                min_features = 16, 
+                min_features = 32, 
                 max_features=256,
                 n_inputs=3, 
                 n_output = 64,                
@@ -38,7 +38,8 @@ class Generator(nn.Module):
     """
     super(Generator, self).__init__()
 
-    # conditional GAN - we input also the 10-dim features maps. We use the same idea of One-Hot vectors but inject them as feature maps.
+    # conditional GAN - we input also n_ages_classes features maps. 
+    # It's the same idea of One-Hot vectors when working with Linear layers, here with conv2dn we inject them as feature maps.
     n_inputs = n_inputs + n_ages_classes # defines the latent vector dimensions
 
     # to do the cliping in the encoder and decoder
@@ -113,7 +114,7 @@ class Generator(nn.Module):
     self.decoder = nn.Sequential(*self.decoder)
 
     # output layer, will put the image to the RGB channels
-    self.out_layer = LinearLayer(in_features=n_output, out_features=3, norm_type='none', activation=activation, alpha_relu=alpha_relu, norm_before=norm_before, use_bias=use_bias)
+    self.out_layer = Conv2DLayer(in_features=n_output, out_features=3, kernel_size=3, scale='none', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, activation=activation, alpha_relu=alpha_relu)
 
   # -----------------------------------------------------------------------------#
   # -----------------------------------------------------------------------------#
@@ -123,23 +124,31 @@ class Generator(nn.Module):
     # if we are using a U-Net like architecture
     if self.use_UNet_archi :
       residuals_enc = []
+      print(f'[INFO] input shape : {x.shape}')
 
       # encoder
-      for i in range(self.down_steps):
+      for i in range(self.down_steps+1): # add +1 since the encoder encapsulate the input layer
         x = self.encoder[i](x)
         residuals_enc.append(x) # save them for later use in the decoder
+        print(f'[INFO] i={i} - encoder : {x.shape}')
 
       # bottleneck
+      print(f'[INFO] shape after encoder : {x.shape}')
+      print(f'[INFO] len residuals_enc : {len(residuals_enc)}')
       x = self.bottleneck(x)
+      print(f'[INFO] shape after bottleneck : {x.shape}')
 
       # decoder
       n = len(residuals_enc)
       for i in range(self.down_steps):
         idx_residual = n - i - 1
+        print(f'[INFO] i={i} - decoder : {self.decoder[i](x).shape}')
+
         if idx_residual >= 0 :
-          x = self.decoder[i](x) + residuals_enc[n]
+          x = self.decoder[i](x) + residuals_enc[idx_residual]
         else :
           x = self.decoder[i](x)
+        print(f'[INFO] i={i} - decoder : {x.shape}')
 
       # out_layer
       out = self.out_layer(x)
@@ -149,6 +158,8 @@ class Generator(nn.Module):
       out = self.bottleneck(out)
       out = self.decoder(out)
       out = self.out_layer(out)
+
+    print(f'[INFO] shape after generator : {out.shape}')
 
     return out
 

@@ -4,7 +4,7 @@ from torch.utils.tensorboard import SummaryWriter
 def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, loss_D, loss_G, step, epoch, hyperparams, with_print_logs=True):
 
     
-
+    # TODO : use a dictionnary that includes names of loss and values and loop through them rather than giving them as params
     # Adding loss values to tb
     tb_writer_loss.add_scalar(
         "loss_D", loss_D, global_step=step

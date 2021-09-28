@@ -53,14 +53,14 @@ class NormalizationLayer(nn.Module):
         elif norm_type == 'in2d' :
             self.norm = nn.InstanceNorm2d(in_features)
 
-        if norm_type == 'bn1d' :
+        elif norm_type == 'bn1d' :
             self.norm = nn.BatchNorm1d(in_features)
 
         elif norm_type == 'in1d' :
             self.norm = nn.InstanceNorm1d(in_features)
 
         elif norm_type == 'none' :
-            self.norm = lambda x : x
+            self.norm = lambda x : x * 1.0
 
         else:
             raise NotImplementedError('[INFO] The Normalization layer %s is not implemented !' % norm_type)
@@ -110,7 +110,6 @@ class LinearLayer(nn.Module):
 # -----------------------------------------------------------------------------#
 
 class Conv2DLayer(nn.Module):
-
     def __init__(self, in_features, out_features, kernel_size=3, scale='none', use_pad=True, use_bias=True, norm_type='bn', norm_before=True, activation='lk_relu', alpha_relu=0.15, interpolation_mode='nearest'):
         super().__init__()
         
@@ -122,7 +121,7 @@ class Conv2DLayer(nn.Module):
         stride = 2 if scale == 'down' else 1
 
         if scale == 'up':
-            self.scale_layer = lambda x : nn.functional.interpolate(x, scale_factor=1, mode=interpolation_mode)
+            self.scale_layer = lambda x : nn.functional.interpolate(x, scale_factor=2, mode=interpolation_mode)
         else :
             self.scale_layer = lambda x : x
 
