@@ -1,22 +1,20 @@
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
+def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, hyperparams, with_print_logs=True):
 
-def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, loss_D, loss_G, step, epoch, hyperparams, with_print_logs=True):
-
-    
-    # TODO : use a dictionnary that includes names of loss and values and loop through them rather than giving them as params
-    # Adding loss values to tb
-    tb_writer_loss.add_scalar(
-        "loss_D", loss_D, global_step=step
-    )
-
-    tb_writer_loss.add_scalar(
-        "loss_G", loss_G, global_step=step
-    )
+    for k,v in losses.items():
+        tb_writer_loss.add_scalar(
+            k, v, global_step=step
+        )
         
     # Adding generated images to tb
+    age_fake=age_fake.cpu().numpy()
+    age_fake = (np.argmax(age_fake)+1)*10
+
+    label_fake = "Fake images of age "+str(age_fake)
     tb_writer_fake.add_image(
-        "Fake images", img_fake, global_step=step
+        label_fake, img_fake, global_step=step
     )
 
     tb_writer_real.add_image(
@@ -24,8 +22,10 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
     )
 
     if with_print_logs :
-        print(
-            f"Epoch [{epoch}/{hyperparams.n_epochs}] \ "
-            f"Loss_D : [{loss_D:.4f}] \ "
-            f"loss_G : [{loss_G:.4f}] \ "
-        )
+        print(f"Epoch [{epoch}/{hyperparams.n_epochs}]", sep=' ')
+        for k,v in losses.items():
+            print(f"{k} : [{v:.4f}]", sep=' - ', end=' - ')
+            
+    
+def compute_nbr_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
