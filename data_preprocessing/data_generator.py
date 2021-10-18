@@ -14,15 +14,18 @@ class CACD2000Data(Dataset):
 
     # -----------------------------------------------------------------------------#
 
-    def __init__(self, img_dir="./data/CACD2000/CACD2000", bs=2, n_classes=5, num_threads=4, h=256, w=256):
+    def __init__(self, img_dir="./data/CACD2000/", n_classes=5, n_classes_max=5, h=256, w=256):
 
       """ load the dataset """
 
       self.n_classes = n_classes
+      self.n_classes_max = n_classes_max
       # images
       self.img_dir = img_dir
       self.img_names = [img_name for img_name in os.listdir(img_dir)]
-      
+      self.h = h
+      self.w = w
+      self.c = 3 + self.n_classes
       # tranformations, using normalization helps stabilizing the training of GANs.
       self.transforms = transforms.Compose([
                                     transforms.ToTensor(),
@@ -30,11 +33,10 @@ class CACD2000Data(Dataset):
                                     transforms.Normalize( (0.5, 0.5, 0.5) , (0.5, 0.5, 0.5) )
                         ])
 
-      # init dataloarder
-      # self.dataloader = DataLoader(self.data, batch_size=bs, shuffle=True, num_workers=num_threads) 
+      print("--------------------------------------")
+      print(f'[INFO] Total number of images in the training dataset : {len(self.img_names)}')
+      print("--------------------------------------")
 
-      # print(f'shape dataset : {self.data.shape}')
-      print(f'len dataset : {len(self.img_names)}')
 
 
     # -----------------------------------------------------------------------------#
@@ -47,20 +49,34 @@ class CACD2000Data(Dataset):
 
     # get an image by index
     def __getitem__(self, idx):
+
+      # Loading the image
       full_path = os.path.join(self.img_dir, self.img_names[idx]) 
+      
+      # we take the max in case we have an age between 0 and 9. We don't want to have a negative class
+      real_age_class = torch.zeros(self.n_classes_max).to('cuda:0')
+      idx_real_age_class = min(max(int(self.img_names[idx].split('_')[0]) // 10 - 1, 0), 4)
+      real_age_class[idx_real_age_class] = 1
 
       image = Image.open(full_path).convert('RGB')
-      image_normalized = self.transforms(image)
-      c, h, w = image_normalized.shape
+      image_normalized = self.transforms(image).to('cuda:0')
+      _, h, w = image_normalized.shape
 
-      ## add fmaps of n_classes
-      idx = np.argmax(torch.randn(( 1, self.n_classes)), axis=1)
-      fmap =  torch.zeros(self.n_classes, h, w).to('cpu')
-      fmap[idx] = torch.ones_like(fmap[idx])
+      if self.n_classes > 0 :
+        idx_one = np.argmax(torch.randn(( 1, self.n_classes)), axis=1)
 
-      image_with_lbl = torch.row_stack((image_normalized, fmap))
-      print(f'loader _ image_with_lbl shape {image_with_lbl.shape}')
+        fmap =  torch.zeros(self.n_classes, h, w).to('cuda:0')
+        fmap[idx_one] = torch.ones_like(fmap[idx_one])
 
-      return image_with_lbl
+        injected_age_class = torch.zeros(self.n_classes).to('cuda:0') #.type(torch.LongTensor).to('cuda:0')
+        injected_age_class[idx_one.item()] = 1
+        # print(f'injected_age_class : {injected_age_class}')
+        
+        image_with_lbl = torch.row_stack((image_normalized, fmap))        
+
+        return image_with_lbl, injected_age_class, real_age_class
+
+      else :
+        return image_normalized
 
     # -----------------------------------------------------------------------------#
