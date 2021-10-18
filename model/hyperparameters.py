@@ -4,32 +4,35 @@ class Hyperparameters():
   
   def __init__( self, 
                 lr=0.00002, 
-                batch_size=32, 
-                n_epochs=50, 
+                lr_age_clf=0.001,
+                batch_size=2, 
+                n_epochs=400, 
                 use_UNet_archi=True, 
                 norm_type='in2d',
                 norm_before=True, 
-                up_steps=2, 
-                bottleneck_size=2, 
-                down_steps=2, 
-                min_features=16, 
-                max_features=256, 
+                up_steps=4, 
+                bottleneck_size=5, 
+                down_steps=4, 
+                min_features=32, 
+                max_features=512, 
                 n_inputs=3, 
                 n_output_disc=1, 
                 n_ages_classes=5, 
                 alpha_relu=0.15, 
-                show_advance=25, 
-                save_weights=1000,
+                show_advance=5, 
+                save_weights=500,
                 lambda_disc=1.5,
                 lambda_gen=2,
-                lambda_pcp=4,
+                lambda_pcp=0.35,
                 lambda_age=10,
-                lambda_id=15,
-                lambda_lpips=8,
+                lambda_id=30,
+                lambda_mse=150,
+                num_threads=4,
               ):
 
-    self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    self.device = "cuda" if torch.cuda.is_available() else "cpu"
     self.lr = lr
+    self.lr_age_clf = lr_age_clf
     self.batch_size = batch_size
     self.n_epochs = n_epochs 
 
@@ -56,9 +59,18 @@ class Hyperparameters():
     self.lambda_pcp = lambda_pcp
     self.lambda_age = lambda_age
     self.lambda_id = lambda_id
-    self.lambda_lpips = lambda_lpips
+    self.lambda_mse = lambda_mse
 
 
     self.alpha_relu=alpha_relu
     self.show_advance=show_advance
     self.save_weights=save_weights
+    
+    self.num_threads = num_threads
+
+  def dump(self, path):
+
+    with open(path, "w") as f:
+      for attr, value in self.__dict__.items():
+        f.writelines(attr + " : " + str(value) + "\n")
+      f.close()
