@@ -21,7 +21,7 @@ class Generator(nn.Module):
                 min_features = 32, 
                 max_features=256,
                 n_inputs=3, 
-                n_output = 64,                
+                n_output_first = 64,                
                 n_ages_classes=5, 
                 down_steps=2, 
                 bottleneck_size=2, 
@@ -50,31 +50,46 @@ class Generator(nn.Module):
     self.down_steps = down_steps
     self.up_steps = up_steps
 
+    print("------------- Generator -------------")
+
     ##########################################
     #####             Encoder             ####
     ##########################################
 
     self.encoder = []
 
+    print("------------ Encoder ---------------")
+    
+    print(f"input layer...")
+    print(f"n_inputs : {n_inputs}")
+    print(f"n_output_first : {n_output_first}")
+    print("---------------------------")
+
     # input layer
+
     self.encoder.append(
-      ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+      ConvResidualBlock(in_features=n_inputs, out_features=n_output_first, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
     )
     
-    n_inputs = n_output
-    n_output = features_cliping(n_output // 2)
+    n_inputs = n_output_first
+    n_output = features_cliping(n_output_first * 2)
 
-    for i in range(down_steps):
+    
+
+    for i in range(down_steps-1):
+      print(f"n_inputs : {n_inputs}")
+      print(f"n_output : {n_output}")
+      print("---------------------------")
 
       self.encoder.append(
         ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
       )
 
-      if i != down_steps-1 :
-        n_inputs = features_cliping(n_inputs // 2)
-        n_output = features_cliping(n_output // 2)
+      if i != down_steps-2 :
+        n_inputs = features_cliping(n_inputs * 2)
+        n_output = features_cliping(n_output * 2)
       
     self.encoder = nn.Sequential(*self.encoder)
 
@@ -82,8 +97,16 @@ class Generator(nn.Module):
     #####            Bottleneck           ####
     ##########################################
 
+    print("------------ Bottleneck ---------------")
+    
+    
+    
     self.bottleneck = []
     for i in range(bottleneck_size):
+
+      print(f"n_inputs : {n_output}")
+      print(f"n_output : {n_output}")
+      print("---------------------------")
 
       self.bottleneck.append(
         ConvResidualBlock(in_features=n_output, out_features=n_output, kernel_size=kernel_size, scale='none', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
@@ -98,14 +121,20 @@ class Generator(nn.Module):
 
     self.decoder = []
 
+    print("------------ Decoder ---------------")
+
     for i in range(up_steps):
       if i == 0 :
         n_inputs = n_output
       else :
-        n_inputs = features_cliping(n_inputs * 2)
+        n_inputs = features_cliping(n_inputs // 2)
       
-      n_output = features_cliping(n_output * 2)
+      n_output = features_cliping(n_output // 2)
       
+      print(f"n_inputs : {n_inputs}")
+      print(f"n_output : {n_output}")
+      print("---------------------------")
+
       self.decoder.append(
         ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='up', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
@@ -114,6 +143,11 @@ class Generator(nn.Module):
     self.decoder = nn.Sequential(*self.decoder)
 
     # output layer, will put the image to the RGB channels
+    print("------------ Output Layer ---------------")
+    print(f"n_inputs : {n_output}")
+    print(f"n_output : 3")
+    print("---------------------------")
+
     self.out_layer = Conv2DLayer(in_features=n_output, out_features=3, kernel_size=3, scale='none', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, activation=activation, alpha_relu=alpha_relu)
 
   # -----------------------------------------------------------------------------#
@@ -154,12 +188,16 @@ class Generator(nn.Module):
       out = self.out_layer(x)
 
     else :    
+      # print(f'[INFO] input shape : {x.shape}')
       out = self.encoder(x)
+      # print(f'[INFO] shape after encoder : {out.shape}')
       out = self.bottleneck(out)
+      # print(f'[INFO] shape after bottleneck : {out.shape}')
       out = self.decoder(out)
+      # print(f'[INFO] shape after decoder : {out.shape}')
       out = self.out_layer(out)
 
-    print(f'[INFO] shape after generator : {out.shape}')
+    # print(f'[INFO] shape after generator : {out.shape}')
 
     return out
 

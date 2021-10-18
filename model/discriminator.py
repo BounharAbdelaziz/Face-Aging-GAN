@@ -12,15 +12,14 @@ class Discriminator(nn.Module):
                   activation='lk_relu', 
                   alpha_relu=0.15, 
                   use_bias=True,
-                  min_features = 16, 
-                  max_features=256,
+                  min_features = 32, 
+                  max_features=512,
                   n_inputs=3, 
                   n_output = 64, 
                   age_fmap=None,
                   output_dim=1,               
                   n_ages_classes=5, 
-                  cgan=True, 
-                  down_steps=2, 
+                  down_steps=4, 
                   use_pad=True, 
                   interpolation_mode='nearest', 
                   kernel_size=3,
@@ -51,33 +50,38 @@ class Discriminator(nn.Module):
                         activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
     )
     
-    for i in range(down_steps):
+    print("------------- Discriminator -------------")
+    for i in range(down_steps-1):
       
       if i == 0 :
         n_inputs = n_output
-        n_output = features_cliping(n_output // 2)
-
+        n_output = features_cliping(n_output * 2)
+      print(f"n_inputs : {n_inputs}")
+      print(f"n_output : {n_output}")
+      print("---------------------------")
       self.encoder.append(
         ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
       )
 
       if i != down_steps-1 :
-        n_inputs = features_cliping(n_inputs // 2)
-        n_output = features_cliping(n_output // 2)
+        n_inputs = features_cliping(n_inputs * 2)
+        n_output = features_cliping(n_output * 2)
 
     self.encoder = nn.Sequential(*self.encoder)
 
     self.flatten = nn.Flatten()
 
-    self.out_layer = LinearLayer(in_features=n_output * 32 * 32, out_features=output_dim, norm_type='none', activation='sigmoid', alpha_relu=alpha_relu, norm_before=norm_before, use_bias=use_bias)
+    self.out_layer = LinearLayer(in_features=n_output * 16 * 16, out_features=output_dim, norm_type='none', activation='sigmoid', alpha_relu=alpha_relu, norm_before=norm_before, use_bias=use_bias)
 
   # -----------------------------------------------------------------------------#
 
   def forward(self, x) :
+    # print(f'Discriminator input : {x.shape}')
     out = self.encoder(x)
-    print(f'out : {out.shape}')
+    # print(f'encoder output : {out.shape}')
     out = self.flatten(out)    
+    # print(f'flatten output : {out.shape}')
     out = self.out_layer(out)
     return out
     
