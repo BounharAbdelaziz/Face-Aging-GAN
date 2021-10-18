@@ -41,6 +41,7 @@ def init_weights(net, init_type='normal', init_gain=0.02):
     print('initialize network %s with %s' % (network_name, init_type))
     net.apply(init_func)  # apply the initialization function <init_func>
 
+    return net
 
 def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
@@ -86,14 +87,11 @@ def get_scheduler(optimizer, opt):
     return scheduler
 
 
-def define_network(opt, net, isTrain=True, use_norm='none', init_network=True):
-    # apply_norm(net, use_norm)
-    if not isTrain:
-        net.eval()  
-    if len(opt.gpu_ids) > 0:
+def define_network(net, data_device, gpu_ids):
+    
+    if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
-        net.to(opt.device)
-        net = torch.nn.DataParallel(net, opt.gpu_ids, output_device=opt.data_device)
-    if init_network:
-        init_weights(net, init_type='normal', init_gain=0.02)
+        net.to(data_device)
+        net = torch.nn.DataParallel(net, gpu_ids, output_device=data_device)
+   
     return net
