@@ -29,20 +29,22 @@ class GenLoss(nn.Module):
         else:
             raise NotImplementedError('[INFO] The GAN type %s is not implemented !' % self.gan_type)
 
+        self.eps = 1e-8
+
     def forward(self, disc_pred):
 
         ##########################################
         #####         Generator Loss          ####
         ##########################################
         
-        if self.gan_type == 'vanilla' :
+        if self.gan_type in ['vanilla', 'lsgan'] :
 
             # we want to min log(1 - D(G(z))) which is equivalent to max log(D(G(z))) and it's better in the begining of the training (better gradients).
             loss_G = self.criterion(disc_pred, torch.ones_like(disc_pred))
 
         else:
             raise NotImplementedError('[INFO] The GAN type %s is not implemented !' % self.gan_type)
-        return loss_G
+        return loss_G + self.eps
 
 
 class DiscLoss(nn.Module):
@@ -67,13 +69,15 @@ class DiscLoss(nn.Module):
         else:
             raise NotImplementedError('[INFO] The GAN type %s is not implemented !' % self.gan_type)
 
+        self.eps = 1e-8
+        
     def forward(self, disc_real, disc_fake):
 
         ##########################################
         #####       Discriminator Loss        ####
         ##########################################
 
-        if self.gan_type == 'vanilla' :
+        if self.gan_type in ['vanilla', 'lsgan'] :
 
             # the loss on the real image in the batch
             loss_D_real = self.criterion(disc_real, torch.ones_like(disc_real))
@@ -82,19 +86,20 @@ class DiscLoss(nn.Module):
             # total discriminator loss          
             loss_D = (loss_D_real + loss_D_fake) / 2
 
-        return loss_D
+        return loss_D + self.eps
 
 
 class PerceptualLoss(nn.Module):
 
     """ The perceptual loss combines the MSE (pixel-domain) loss and extracted features by the VGG-19 network """
-    def __init__(self, feature_layers=[0, 3, 8, 17, 26, 35]):
+    def __init__(self, feature_layers=[0, 3, 8, 17, 26, 35], device="cuda:0"):
         super(PerceptualLoss, self).__init__()
         # Feature-domain Loss
-        self.vgg_net = VGG_19()
+        self.vgg_net = VGG_19().to(device)
         self.feature_layers = feature_layers
         self.build_features_extractor()
         self.criterion_features = nn.MSELoss()
+        self.eps = 1e-8
         # Pixel-domain Loss
         self.mse = nn.MSELoss()
                
@@ -154,33 +159,29 @@ class PerceptualLoss(nn.Module):
         L2_loss = self.mse(x, y)
 
         # total loss
-        total_loss = pcp_loss + L2_loss
+        total_loss = pcp_loss + L2_loss + self.eps
 
         return total_loss
 
     
 class AgeLoss(nn.Module):
-    def __init__(self, n_ages_classes=5):
+    def __init__(self, n_ages_classes=5, device='cuda'):
         super(AgeLoss, self).__init__()
-        self.age_clf = AgeClassifier(n_ages_classes) # add network
-        self.criterion = nn.CrossEntropyLoss() # Softmax Loss
+        self.age_clf = AgeClassifier(n_ages_classes, device=device)
+        # Includes a sigmoid layer before using the BCE Loss
+        self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, x, y):
+    def forward(self, x, age_class):
         
-        x_age = self.age_clf(x)
-        y_age = self.age_clf(y)
-        print("[INFO] x_age : ", x_age)
-        print("[INFO] y_age : ", y_age)
-        print(torch.squeeze(x_age).view(-1))
-        loss = self.criterion(torch.squeeze(x_age), torch.squeeze(y_age))
+        x_age = self.age_clf(x)   
 
-        print("[INFO] AgeLoss : ", loss)
-        return loss
+        return sum([ self.criterion(x_age[i], age_class[i, :]) for i in range(x.shape[0]) ])
 
 class IDLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, device='cuda'):
         super(IDLoss, self).__init__()
-        self.face_recog_net = LightCNN_29Layers_v2()
+        self.device = device
+        self.face_recog_net = LightCNN_29Layers_v2(device=device)
         self.criterion = nn.CosineEmbeddingLoss()
         self.transform = transforms.Compose([
                                         transforms.ToPILImage(),
@@ -190,12 +191,12 @@ class IDLoss(nn.Module):
                                     ])
 
     def forward(self, fake, real, y_val=1):
-        real = self.transform(real[0])
-        fake = self.transform(fake[0])
+        real = self.transform(real[0]).to(self.device)
+        fake = self.transform(fake[0]).to(self.device)
 
         real = real.unsqueeze(0)
         fake = fake.unsqueeze(0)
-        print("[INFO] real shape : ", real.shape)
+        # print("[INFO] real shape : ", real.shape)
 
         real_embedding = self.face_recog_net(real)
         fake_embedding = self.face_recog_net(fake)
@@ -207,4 +208,4 @@ class IDLoss(nn.Module):
             return loss
 
         else :
-            raise ValueError(f'Value {y} for the y variable is not valid! Choose 1 or -1.')
+            raise ValueError(f'Value {y_val} for the y variable is not valid! Choose 1 or -1.')
