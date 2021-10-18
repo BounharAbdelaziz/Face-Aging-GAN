@@ -56,8 +56,39 @@ class resblock(nn.Module):
 
 
 class network_29layers_v2(nn.Module):
-    def __init__(self, block, layers, num_classes=80013):
+    def __init__(self, block, layers, device='cuda', num_classes=80013):
         super(network_29layers_v2, self).__init__()
+
+        """
+        self.network = nn.Sequential(
+            mfm(1, 48, 5, 1, 2),
+            nn.MaxPool2d((2,2)),
+            nn.AvgPool2d((2,2)),
+
+            self._make_layer(block, layers[0], 48, 48),
+
+            group(48, 96, 3, 1, 1),
+            nn.MaxPool2d((2,2)),
+            nn.AvgPool2d((2,2)),
+
+            self._make_layer(block, layers[1], 96, 96),
+
+            group(96, 192, 3, 1, 1),
+            nn.MaxPool2d((2,2)),
+            nn.AvgPool2d((2,2)),
+
+            self._make_layer(block, layers[2], 192, 192),
+
+            group(192, 128, 3, 1, 1),
+
+            self._make_layer(block, layers[3], 128, 128),
+
+            group(128, 128, 3, 1, 1),
+            nn.MaxPool2d((2,2)),
+            nn.AvgPool2d((2,2)),
+
+        ).to(device)
+        """
         self.conv1    = mfm(1, 48, 5, 1, 2)
         self.block1   = self._make_layer(block, layers[0], 48, 48)
         self.group1   = group(48, 96, 3, 1, 1)
@@ -102,8 +133,8 @@ class network_29layers_v2(nn.Module):
 
         return fc
 
-def LightCNN_29Layers_v2(weights='./pretrained_models/LightCNN_29Layers_V2_checkpoint.pth', **kwargs):
-    model = network_29layers_v2(resblock, [1, 2, 3, 4], **kwargs)
+def LightCNN_29Layers_v2(weights='./pretrained_models/LightCNN_29Layers_V2_checkpoint.pth', device='cuda', **kwargs):
+    model = network_29layers_v2(resblock, [1, 2, 3, 4], device, **kwargs)
 
     # load pretrained model weights
     ckpt = torch.load(weights, map_location=(lambda storage, loc : storage))
@@ -117,6 +148,7 @@ def LightCNN_29Layers_v2(weights='./pretrained_models/LightCNN_29Layers_V2_check
 
     # let model on eval mode
     model.eval()
+    model.to(device)
 
     return model
 
@@ -144,15 +176,15 @@ class AgeClassifier(nn.Module):
         Following the idea from https://openaccess.thecvf.com/content_cvpr_2018/papers/Wang_Face_Aging_With_CVPR_2018_paper.pdf, 
         we finetune (change # of classes) AlexNet based on the CACD training set with 200.000 steps.
     """
-    def __init__(self, n_ages_classes=5):
+    def __init__(self, n_ages_classes=5, device='cuda'):
         super(AgeClassifier, self).__init__()
         
         # Parameters
         self.n_ages_classes = n_ages_classes
 
         # Network
-        self.alexnet = models.alexnet(pretrained=True)
-        self.flatten_layer = nn.Flatten()
+        self.alexnet = models.alexnet(pretrained=True).to(device)
+        self.flatten_layer = nn.Flatten().to(device)
         self.classifier = nn.Sequential(
                                     nn.Dropout(),
                                     nn.Linear(256 * 6 * 6, 4096),
@@ -161,7 +193,7 @@ class AgeClassifier(nn.Module):
                                     nn.Linear(4096, 4096),
                                     nn.ReLU(inplace=True),
                                     nn.Linear(4096, self.n_ages_classes),
-                                )
+                                ).to(device)
         
     def forward(self, x):
 
@@ -169,9 +201,9 @@ class AgeClassifier(nn.Module):
         x = self.alexnet.features(x)
         x = self.alexnet.avgpool(x)
         x = self.flatten_layer(x)
-        # classification
+        
+        # logits
         x = self.classifier(x)
         # x = F.softmax(x, dim=1)
-        print(f'AgeClassifier - x.shape : {x.shape} ')
 
         return x
