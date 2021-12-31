@@ -176,32 +176,56 @@ class AgeClassifier(nn.Module):
         Following the idea from https://openaccess.thecvf.com/content_cvpr_2018/papers/Wang_Face_Aging_With_CVPR_2018_paper.pdf, 
         we finetune (change # of classes) AlexNet based on the CACD training set with 200.000 steps.
     """
-    def __init__(self, n_ages_classes=5, device='cuda'):
+    def __init__(self, n_ages_classes=5, backbone='resnet', device='cuda'):
         super(AgeClassifier, self).__init__()
         
         # Parameters
         self.n_ages_classes = n_ages_classes
+        self.backbone = backbone
+
+        print(f"Using {backbone} as the Age classifier")
 
         # Network
-        self.alexnet = models.alexnet(pretrained=True).to(device)
+        if backbone == 'alexnet':
+            self.model = models.alexnet(pretrained=True).to(device)
+            flattened_dim = 256 * 6 * 6
+
+        elif backbone == 'resnet':
+            self.model = models.resnet152(pretrained=True).to(device)
+            flattened_dim = 1000
+
         self.flatten_layer = nn.Flatten().to(device)
         self.classifier = nn.Sequential(
-                                    nn.Dropout(),
-                                    nn.Linear(256 * 6 * 6, 4096),
+                                    nn.Dropout(0.25),
+                                    nn.Linear(flattened_dim, 4096),
                                     nn.ReLU(inplace=True),
-                                    nn.Dropout(),
+
+                                    nn.Dropout(0.25),
+                                    nn.Linear(4096, 4096),                
+                                    nn.ReLU(inplace=True),
+
+                                    nn.Dropout(0.25),
                                     nn.Linear(4096, 4096),
                                     nn.ReLU(inplace=True),
+
+                                    nn.Dropout(0.25),
+                                    nn.Linear(4096, 4096),
+                                    nn.ReLU(inplace=True),
+
                                     nn.Linear(4096, self.n_ages_classes),
                                 ).to(device)
         
     def forward(self, x):
 
         # Features extraction
-        x = self.alexnet.features(x)
-        x = self.alexnet.avgpool(x)
+        if self.backbone == 'alexnet':
+            x = self.model.features(x)
+            x = self.model.avgpool(x)
+        elif self.backbone == 'resnet':
+            x = self.model(x)
+
         x = self.flatten_layer(x)
-        
+        # print(x.shape)
         # logits
         x = self.classifier(x)
         # x = F.softmax(x, dim=1)
