@@ -7,7 +7,7 @@ from torch.optim import SGD
 import matplotlib.pyplot as plt
 
 import utils.helpers as helper
-from model.loss import GenLoss, DiscLoss, PerceptualLoss, AgeLoss, IDLoss
+from model.loss import L2Loss, GenLoss, DiscLoss, PerceptualLoss, AgeLoss, IDLoss
 
 import os
 from tqdm import tqdm
@@ -35,7 +35,7 @@ class IDFaceGAN():
     self.hyperparams = hyperparams
 
     # Loss functions
-    self.loss_MSE = nn.MSELoss().to(self.hyperparams.device)
+    self.loss_MSE = L2Loss(device=self.hyperparams.device)
     self.loss_GEN = GenLoss(gan_type).to(self.hyperparams.device)
     self.loss_DISC = DiscLoss(gan_type).to(self.hyperparams.device)
     self.loss_PCP = PerceptualLoss(device=self.hyperparams.device)
@@ -166,84 +166,85 @@ class IDFaceGAN():
         # print(f'injected_age_class device {injected_age_class.get_device()}')
         # print(f'real_age_class device {real_age_class.get_device()}')
 
-        if tune_age_clf:
-          # print('optimizing age clf')
-          # Optimizing the Age classifier
-          # We train it first to have better predictions from the first iteration 
-          self.opt_age_clf.zero_grad()
-          loss_age_clf = self.backward_age_clf(real_data[:, :3, :, :], real_age_class)
-          self.opt_age_clf.step()
+        with torch.autograd.set_detect_anomaly(True) :
 
-          if batch_idx*epoch*len(dataloader.dataset) > max_step_train_age_clf:
-            tune_age_clf = False
+          if tune_age_clf:
+            # Optimizing the Age classifier
+            # We train it first to have better predictions from the first iteration 
+            self.opt_age_clf.zero_grad()
+            loss_age_clf = self.backward_age_clf(real_data[:, :3, :, :], real_age_class)
+            self.opt_age_clf.step()
 
-        # real_data = real_data.to(self.hyperparams.device)
-        real_data = real_data.float()
-        real_data = real_data.view(self.hyperparams.batch_size, self.hyperparams.input_channels_gen, h, w).to(self.hyperparams.device)
+            if batch_idx*epoch*len(dataloader.dataset) > max_step_train_age_clf:
+              tune_age_clf = False
+
+          # real_data = real_data.to(self.hyperparams.device)
+          real_data = real_data.float()
+          real_data = real_data.view(self.hyperparams.batch_size, self.hyperparams.input_channels_gen, h, w).to(self.hyperparams.device)
 
 
-        # we generate an image according to the age
-        # print("avant le gen")
-        fake_data = self.generator(real_data)
-        # print("après le gen")
+          # we generate an image according to the age
+          # print("avant le gen")
+          fake_data = self.generator(real_data)
+          # print("après le gen")
 
-        # The 5 feature maps that constitute the label
-        fmap_age_lbl = real_data[:, 3:, :, :]
-        # should do a column stack since it's the second dimensions now
-        fake_data_clone = fake_data.clone()
-        fake_data_disc = torch.column_stack((fake_data_clone, fmap_age_lbl))
+          # The 5 feature maps that constitute the label
+          fmap_age_lbl = real_data[:, 3:, :, :]
+          # should do a column stack since it's the second dimensions now
+          fake_data_clone = fake_data.clone()
+          fake_data_disc = torch.column_stack((fake_data_clone, fmap_age_lbl))
 
-        # prediction of the discriminator on real and fake images in the batch
-        disc_real = self.discriminator(real_data)
-        # detach from the computational graph to not re-use the output of the Generator
-        disc_fake = self.discriminator(fake_data_disc.detach())
+          # prediction of the discriminator on real and fake images in the batch
+          disc_real = self.discriminator( real_data[:, :3, :, :], fmap_age_lbl=fmap_age_lbl)
+          # detach from the computational graph to not re-use the output of the Generator
+          disc_fake = self.discriminator(fake_data_disc[:, :3, :, :].detach(), fmap_age_lbl=fmap_age_lbl)
 
-        real_data_opt = real_data[:, :3, :, :].clone()
-        fake_data_opt = fake_data_disc[:, :3, :, :].clone()
+          real_data_opt = real_data[:, :3, :, :].clone()
+          fake_data_opt = fake_data_disc[:, :3, :, :].clone()
 
-        # Optimizing the Discriminator
-        self.opt_disc.zero_grad()
-        loss_D = self.backward_D(disc_real, disc_fake)
-        self.opt_disc.step()
+          # Optimizing the Discriminator
+          self.opt_disc.zero_grad()
+          loss_D = self.backward_D(disc_real, disc_fake)
+          self.opt_disc.step()
 
-        # Optimizing the Generator
-        disc_fake = self.discriminator(fake_data_disc)
-        self.opt_gen.zero_grad()
-        loss_G_total, loss_GEN, loss_PCP, loss_ID, loss_MSE, loss_AGE = self.backward_G(disc_fake, fake_data_opt, real_data_opt, injected_age_class)       
-        self.opt_gen.step()
+          # Optimizing the Generator
+          disc_fake = self.discriminator(fake_data_disc[:, :3, :, :], fmap_age_lbl=fmap_age_lbl)
+          self.opt_gen.zero_grad()
+          loss_G_total, loss_GEN, loss_PCP, loss_ID, loss_MSE, loss_AGE = self.backward_G(disc_fake, fake_data_opt, real_data_opt, injected_age_class)       
+          self.opt_gen.step()
 
-        # Logging advances
+          # Logging advances
 
-        if batch_idx % self.hyperparams.show_advance == 0 and batch_idx!=0:
+          if batch_idx % self.hyperparams.show_advance == 0 and batch_idx!=0:
 
-          # show advance
-          with torch.no_grad():
-            
-            age_fake = injected_age_class[0]
-            fake_data_ = fake_data[0][:3, :, :].reshape(1, 3, h, w)
-            real_data_ = real_data[0][:3, :, :].reshape(1, 3, h, w)
+            # show advance
+            with torch.no_grad():
+              
+              age_fake = injected_age_class[0]
+              fake_data_ = fake_data[0][:3, :, :].reshape(1, 3, h, w)
+              real_data_ = real_data[0][:3, :, :].reshape(1, 3, h, w)
 
-            img_fake = torchvision.utils.make_grid(fake_data_, normalize=True)
-            img_real = torchvision.utils.make_grid(real_data_, normalize=True)
+              img_fake = torchvision.utils.make_grid(fake_data_, normalize=True)
+              img_real = torchvision.utils.make_grid(real_data_, normalize=True)
 
-            losses = {}
-            losses["loss_D"] = loss_D
-            losses["loss_GEN"] = loss_GEN
-            losses["loss_PCP"] = loss_PCP
-            losses["loss_ID"] = loss_ID
-            losses["loss_MSE"] = loss_MSE
-            losses["loss_AGE"] = loss_AGE
-            losses["loss_G_total"] = loss_G_total
-            losses["loss_age_clf"] = loss_age_clf
-            
-            # lr schedulers
-            losses["lr_gen"] = self.scheduler_gen.get_last_lr()[0]
-            losses["lr_disc"] = self.scheduler_disc.get_last_lr()[0]
-            losses["lr_age_clf"] = self.scheduler_age_clf.get_last_lr()[0]
-            
-            helper.write_logs_tb(self.tb_writer_loss, self.tb_writer_fake, self.tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, self.hyperparams, with_print_logs=True)
+              losses = {}
+              losses["loss_D"] = loss_D
+              losses["loss_GEN"] = loss_GEN
+              losses["loss_PCP"] = loss_PCP
+              losses["loss_ID"] = loss_ID
+              losses["loss_MSE"] = loss_MSE
+              losses["loss_AGE"] = loss_AGE
+              losses["loss_G_total"] = loss_G_total
+              losses["loss_age_clf"] = loss_age_clf
+              
+              # lr schedulers
+              losses["lr_gen"] = self.scheduler_gen.get_last_lr()[0]
+              losses["lr_disc"] = self.scheduler_disc.get_last_lr()[0]
+              losses["lr_age_clf"] = self.scheduler_age_clf.get_last_lr()[0]
+              
+              helper.write_logs_tb(self.tb_writer_loss, self.tb_writer_fake, self.tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, self.hyperparams, with_print_logs=True)
 
-            step = step + 8
+              step = step + 8
 
         if batch_idx % self.hyperparams.save_weights == 0 and batch_idx!=0 :
 

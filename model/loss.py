@@ -6,6 +6,19 @@ import torchvision
 from torch.optim import Adam
 from model.networks import LightCNN_29Layers_v2, VGG_19, AgeClassifier
 from torchvision import transforms
+import torch.nn.functional as F
+
+
+class L2Loss(nn.Module):
+    def __init__(self, device='cuda'):
+        super(L2Loss, self).__init__()
+        self.eps = 1e-8
+        self.device = device
+        self.criterion = nn.MSELoss()
+
+    def forward(self, x, y):
+         
+        return self.criterion(x,y) + self.eps
 
 class GenLoss(nn.Module):
   
@@ -102,6 +115,9 @@ class PerceptualLoss(nn.Module):
         self.eps = 1e-8
         # Pixel-domain Loss
         self.mse = nn.MSELoss()
+
+        for param in self.vgg_net.parameters():
+            param.requires_grad = False
                
     def build_features_extractor(self):
         # print(self.vgg_net)
@@ -175,11 +191,17 @@ class AgeLoss(nn.Module):
         
         x_age = self.age_clf(x)   
 
+        # print(F.sigmoid(x_age))
+        # print(F.softmax(x_age))
+        # print(age_class)
+        # print("--------------------------")
         return sum([ self.criterion(x_age[i], age_class[i, :]) for i in range(x.shape[0]) ])
 
 class IDLoss(nn.Module):
     def __init__(self, device='cuda'):
         super(IDLoss, self).__init__()
+        self.eps = 1e-8
+
         self.device = device
         self.face_recog_net = LightCNN_29Layers_v2(device=device)
         self.criterion = nn.CosineEmbeddingLoss()
@@ -191,21 +213,27 @@ class IDLoss(nn.Module):
                                     ])
 
     def forward(self, fake, real, y_val=1):
-        real = self.transform(real[0]).to(self.device)
-        fake = self.transform(fake[0]).to(self.device)
+        
+        loss = 0
 
-        real = real.unsqueeze(0)
-        fake = fake.unsqueeze(0)
-        # print("[INFO] real shape : ", real.shape)
+        for r,f in zip(real, fake):
 
-        real_embedding = self.face_recog_net(real)
-        fake_embedding = self.face_recog_net(fake)
+            r = self.transform(r).to(self.device)
+            f = self.transform(f).to(self.device)
 
-        if y_val == 1 or y_val == -1 :
-            # y=1 indicates that the identities should be the same
-            # y=-1 indicates that the identities should be the different
-            loss = self.criterion(real_embedding, fake_embedding, y_val*torch.ones_like(real_embedding))
-            return loss
+            r = r.unsqueeze(0)
+            f = f.unsqueeze(0)
+            # print("[INFO] r shape : ", r.shape)
 
-        else :
-            raise ValueError(f'Value {y_val} for the y variable is not valid! Choose 1 or -1.')
+            real_embedding = self.face_recog_net(r)
+            fake_embedding = self.face_recog_net(f)
+
+            if y_val == 1 or y_val == -1 :
+                # y=1 indicates that the identities should be the same
+                # y=-1 indicates that the identities should be the different
+                loss = loss + self.criterion(real_embedding, fake_embedding, y_val*torch.ones_like(real_embedding))                
+
+            else :
+                raise ValueError(f'Value {y_val} for the y variable is not valid! Choose 1 or -1.')
+                
+        return loss + self.eps
