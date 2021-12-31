@@ -89,9 +89,8 @@ def get_scheduler(optimizer, opt):
 
 def define_network(net, data_device, gpu_ids):
     
-    if len(gpu_ids) > 0:
-        assert(torch.cuda.is_available())
-        net.to(data_device)
-        net = torch.nn.DataParallel(net, gpu_ids, output_device=data_device)
+    if len(gpu_ids) > 1:
+        net = torch.nn.DataParallel(net)
+    net.to(data_device)
    
     return net
