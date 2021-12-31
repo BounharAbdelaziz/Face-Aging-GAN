@@ -1,3 +1,4 @@
+import torch 
 import torch.nn as nn
 from torch.nn import Module, BCELoss, Linear, Conv2d
 from torch.nn import Softmax, ReLU, LeakyReLU, Sigmoid, Tanh
@@ -31,10 +32,7 @@ class Discriminator(nn.Module):
     """
     super(Discriminator, self).__init__()
     
-    # conditional GAN - we input also n_ages_classes features maps. 
-    # It's the same idea of One-Hot vectors when working with Linear layers, here with conv2dn we inject them as feature maps.
-    n_inputs = n_inputs + n_ages_classes # defines the latent vector dimensions
-
+    
     # to do the cliping in the encoder and decoder
     features_cliping = lambda x : max(min_features, min(x, max_features))
 
@@ -42,20 +40,34 @@ class Discriminator(nn.Module):
     #####             Encoder             ####
     ##########################################
 
-    self.encoder = []
+    print("------------- Discriminator -------------")
 
+    self.input_layer = []
     # input layer    
-    self.encoder.append(
-      ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+    self.input_layer.append(
+      ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, 
                         activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
     )
-    
-    print("------------- Discriminator -------------")
+    print("------------- input layer -------------")
+
+    print(f"n_inputs : {n_inputs}")
+    print(f"n_output : {n_output}")
+
+    print("------------- encoder -------------")
+    # conditional GAN - we input also n_ages_classes features maps. 
+    # It's the same idea of One-Hot vectors when working with Linear layers, here with conv2dn we inject them as feature maps.
+    # to inject the information at the second layer of the discriminator
+    n_output = n_output + n_ages_classes 
+    self.encoder = []
+
     for i in range(down_steps-1):
       
       if i == 0 :
         n_inputs = n_output
+        n_output = n_output - n_ages_classes
         n_output = features_cliping(n_output * 2)
+
+      print(f"i : {i}")
       print(f"n_inputs : {n_inputs}")
       print(f"n_output : {n_output}")
       print("---------------------------")
@@ -65,9 +77,14 @@ class Discriminator(nn.Module):
       )
 
       if i != down_steps-1 :
-        n_inputs = features_cliping(n_inputs * 2)
+        if i == 0 :
+          n_inputs = features_cliping((n_inputs-n_ages_classes) * 2)
+        else:
+          n_inputs = features_cliping(n_inputs * 2)
+
         n_output = features_cliping(n_output * 2)
 
+    self.input_layer = nn.Sequential(*self.input_layer)
     self.encoder = nn.Sequential(*self.encoder)
 
     self.flatten = nn.Flatten()
@@ -76,9 +93,16 @@ class Discriminator(nn.Module):
 
   # -----------------------------------------------------------------------------#
 
-  def forward(self, x) :
+  def forward(self, x, fmap_age_lbl) :
     # print(f'Discriminator input : {x.shape}')
-    out = self.encoder(x)
+    out = self.input_layer(x)
+    # print(f'input_layer output : {out.shape}')
+    # print(f'fmap_age_lbl[:,:, :128, :128] shape : {fmap_age_lbl[:,:, :128, :128].shape}')
+
+    out = torch.column_stack((out, fmap_age_lbl[:,:, :128, :128]))
+    # print(f'encoder output : {out.shape}')
+
+    out = self.encoder(out)
     # print(f'encoder output : {out.shape}')
     out = self.flatten(out)    
     # print(f'flatten output : {out.shape}')
