@@ -2,6 +2,7 @@
 In this repository, we provide a Generative Model to adress the **Face Aging** problematic. We want to translate the input image to the desired class (10-19, 20-29, 30-39, 40-49, 50+) of age given as input too, the firgures bellow showcase what we want.
 
 ![Output image](./for_readme/img/input_img.PNG "Input image (256x256)")
+![Arrow image](./for_readme/img/arrow.jpg)
 ![Input image](./for_readme/img/output_img_class_5.PNG "Output image (256x256) translated to the class 5 (age 50+)")
 
 To do so, we train two networks in a competitive manner based on the **Generative Adversarial Nets** framework presented by **Ian Goodfellow** in 2014. The **Generator** (G) and the **Discriminator** (D) gets to see the same input, the difference is in the output. G gives an 256x256 image while D outputs a score corresponding to the probability of the image of being real.
