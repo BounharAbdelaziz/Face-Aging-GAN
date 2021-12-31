@@ -41,6 +41,7 @@ else:
 ## Init Models
 hyperparams = Hyperparameters(  show_advance=5, 
                                 lr=0.00003, 
+                                lr_age_clf=0.005,
                                 batch_size=batch_size, 
                                 n_epochs=100,
                                 n_ages_classes=5,
@@ -51,7 +52,7 @@ hyperparams = Hyperparameters(  show_advance=5,
                                 lambda_age=30,
                                 lambda_id=10,
                                 lambda_mse=450,
-                                num_threads=4)
+                                num_threads=8)
 
 # dumping hyperparams to keep track of them for later comparison/use
 path_dump_hyperparams = path / "train_options.txt"
@@ -102,6 +103,7 @@ print("-----------------------------------------------------")
 
 device_ids = [i for i in range(torch.cuda.device_count())]
 print(f"[INFO] Setting up {len(device_ids)} GPU(s) for the networks...")
+print(f"[INFO] .... using GPU(s) device_ids : {device_ids} ...")
 
 generator=define_network(generator, hyperparams.device, device_ids)
 discriminator=define_network(discriminator, hyperparams.device, device_ids)
