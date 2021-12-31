@@ -30,7 +30,7 @@ class Hyperparameters():
                 num_threads=4,
               ):
 
-    self.device = "cuda" if torch.cuda.is_available() else "cpu"
+    self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
     self.lr = lr
     self.lr_age_clf = lr_age_clf
     self.batch_size = batch_size
