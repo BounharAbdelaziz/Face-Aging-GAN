@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torchvision
 from torch.optim import SGD
-import matplotlib.pyplot as plt
 
 import utils.helpers as helper
 from model.loss import L2Loss, GenLoss, DiscLoss, PerceptualLoss, AgeLoss, IDLoss
@@ -12,25 +11,30 @@ from model.loss import L2Loss, GenLoss, DiscLoss, PerceptualLoss, AgeLoss, IDLos
 import os
 from tqdm import tqdm
 from torch.optim.lr_scheduler import ExponentialLR, CyclicLR
-
-# os.environ['CUDA_VISIBLE_DEVICES']=2,3
+# from ignite.handlers.param_scheduler import create_lr_scheduler_with_warmup
+import pytorch_warmup as warmup
 
 class IDFaceGAN():
   
-  def __init__(self, generator, discriminator, age_clf, hyperparams, experiment="ID_FACE_GAN_v2_Lage", gan_type='lsgan'):
+  def __init__(self, generator, discriminator, hyperparams, device_ids, experiment="ID_FACE_GAN_v2_Lage", gan_type='lsgan', n_epoch_warmup=1):
 
     self.generator = generator
     self.discriminator = discriminator
-    self.age_clf = age_clf
 
     # we use Adam optimizer for both Generator and Discriminator
     self.opt_gen = SGD(self.generator.parameters(), lr=hyperparams.lr, weight_decay=0.001, momentum=0.9)
     self.opt_disc = SGD(self.discriminator.parameters(), lr=hyperparams.lr, weight_decay=0.001, momentum=0.9)
-    self.opt_age_clf = SGD(self.age_clf.parameters(), lr=hyperparams.lr_age_clf, weight_decay=0.0005, momentum=0.9)
 
     self.scheduler_gen = CyclicLR(self.opt_gen, base_lr=hyperparams.lr, max_lr=0.1, step_size_up=5, mode="exp_range", gamma=0.85)
     self.scheduler_disc = CyclicLR(self.opt_disc, base_lr=hyperparams.lr, max_lr=0.1, step_size_up=5, mode="exp_range", gamma=0.85)
-    self.scheduler_age_clf = CyclicLR(self.opt_age_clf, base_lr=hyperparams.lr, max_lr=0.1, step_size_up=5, mode="exp_range", gamma=0.85)
+
+    # self.scheduler_disc = create_lr_scheduler_with_warmup(self.scheduler_disc, warmup_start_value=0.0, warmup_end_value=0.1, warmup_duration=10, output_simulated_values=lr_values)
+
+    self.warmup_scheduler_gen = warmup.ExponentialWarmup(self.opt_gen, warmup_period=6000*n_epoch_warmup)
+    self.warmup_scheduler_gen.last_step = -1 # initialize the step counter
+
+    self.warmup_scheduler_disc = warmup.ExponentialWarmup(self.opt_disc, warmup_period=1000*n_epoch_warmup)
+    self.warmup_scheduler_disc.last_step = -1 # initialize the step counter
 
     self.hyperparams = hyperparams
 
@@ -39,7 +43,7 @@ class IDFaceGAN():
     self.loss_GEN = GenLoss(gan_type).to(self.hyperparams.device)
     self.loss_DISC = DiscLoss(gan_type).to(self.hyperparams.device)
     self.loss_PCP = PerceptualLoss(device=self.hyperparams.device)
-    self.loss_AGE = AgeLoss(device=self.hyperparams.device).to(self.hyperparams.device)
+    self.loss_AGE = AgeLoss(self.hyperparams, device_ids).to(self.hyperparams.device)
     self.loss_ID = IDLoss(device=self.hyperparams.device).to(self.hyperparams.device)
 
     self.eps = 1e-8
@@ -84,13 +88,6 @@ class IDFaceGAN():
 
     return loss_D
 
-  def backward_age_clf(self, logits, label):
-    loss_age_clf = self.lambda_age*self.loss_AGE(logits, label)
-
-    with torch.autograd.set_detect_anomaly(True) : # set to True only during debug
-      loss_age_clf.backward()
-    return loss_age_clf
-
   def optimize_network(self, disc_real, disc_fake, fake, real, real_age, pred_age, injected_age_class, tune_age_clf=False):
     
     # run backprop on the Discriminator
@@ -124,36 +121,12 @@ class IDFaceGAN():
       net = torch.nn.DataParallel(net, device_ids, output_device=data_device)
     return net
 
-  def train(self, dataloader, h=256, w=256, ckpt="./check_points/", max_step_train_age_clf=100.000, tune_age_clf=False):
+  def train(self, dataloader, h=256, w=256, ckpt="./check_points/"):
 
     step = 0
     self.PATH_CKPT = ckpt+self.experiment+"/"
     
-    print("[INFO] Started training using device ",self.hyperparams.device,"...")
-
-    if self.hyperparams.device != 'cpu':
-      # using DataParallel tu copy the Tensors on all available GPUs
-      device_ids = [i for i in range(torch.cuda.device_count())]
-
-      print(f'[INFO] Copying tensors to all available GPUs : {device_ids}')
-      # should be reversed after the fix of dp
-
-      
-      # print(self.generator)
-      # self.generator = self.define_network(net=self.generator, data_device=self.hyperparams.device, device_ids=device_ids)
-      # self.discriminator = self.define_network(net=self.discriminator, data_device=self.hyperparams.device, device_ids=device_ids)
-      # self.age_clf = self.define_network(net=self.age_clf, data_device=self.hyperparams.device, device_ids=device_ids)
-
-      # if len(device_ids) > 1 :         
-      #   self.generator = nn.DataParallel(self.generator)
-      #   self.discriminator = nn.DataParallel(self.discriminator)
-      #   self.age_clf = nn.DataParallel(self.age_clf)
-
-      # self.generator.to(self.hyperparams.device)
-      # self.discriminator.to(self.hyperparams.device)
-      # self.age_clf.to(self.hyperparams.device)
-      
-
+    print("[INFO] Started training using device ",self.hyperparams.device,"...")      
     
     for epoch in tqdm(range(self.hyperparams.n_epochs)):
 
@@ -168,28 +141,17 @@ class IDFaceGAN():
 
         with torch.autograd.set_detect_anomaly(True) :
 
-          if tune_age_clf:
-            # Optimizing the Age classifier
-            # We train it first to have better predictions from the first iteration 
-            self.opt_age_clf.zero_grad()
-            loss_age_clf = self.backward_age_clf(real_data[:, :3, :, :], real_age_class)
-            self.opt_age_clf.step()
-
-            if batch_idx*epoch*len(dataloader.dataset) > max_step_train_age_clf:
-              tune_age_clf = False
-
           # real_data = real_data.to(self.hyperparams.device)
           real_data = real_data.float()
           real_data = real_data.view(self.hyperparams.batch_size, self.hyperparams.input_channels_gen, h, w).to(self.hyperparams.device)
 
 
           # we generate an image according to the age
-          # print("avant le gen")
           fake_data = self.generator(real_data)
-          # print("après le gen")
 
           # The 5 feature maps that constitute the label
           fmap_age_lbl = real_data[:, 3:, :, :]
+          
           # should do a column stack since it's the second dimensions now
           fake_data_clone = fake_data.clone()
           fake_data_disc = torch.column_stack((fake_data_clone, fmap_age_lbl))
@@ -235,16 +197,21 @@ class IDFaceGAN():
               losses["loss_MSE"] = loss_MSE
               losses["loss_AGE"] = loss_AGE
               losses["loss_G_total"] = loss_G_total
-              losses["loss_age_clf"] = loss_age_clf
               
               # lr schedulers
               losses["lr_gen"] = self.scheduler_gen.get_last_lr()[0]
               losses["lr_disc"] = self.scheduler_disc.get_last_lr()[0]
-              losses["lr_age_clf"] = self.scheduler_age_clf.get_last_lr()[0]
               
               helper.write_logs_tb(self.tb_writer_loss, self.tb_writer_fake, self.tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, self.hyperparams, with_print_logs=True)
 
               step = step + 8
+
+
+          # Learning rate scheduler
+          self.scheduler_gen.step(epoch-1)
+          self.scheduler_disc.step(epoch-1)
+          self.warmup_scheduler_gen.dampen()
+          self.warmup_scheduler_disc.dampen()
 
         if batch_idx % self.hyperparams.save_weights == 0 and batch_idx!=0 :
 
@@ -255,9 +222,7 @@ class IDFaceGAN():
           torch.save(self.discriminator.state_dict(), os.path.join(self.PATH_CKPT,"D_it_"+str(step)+".pth"))
           torch.save(self.generator.state_dict(), os.path.join(self.PATH_CKPT,"G_it_"+str(step)+".pth"))
 
-      self.scheduler_gen.step()
-      self.scheduler_disc.step()
-      self.scheduler_age_clf.step()
+          
 
     print("[INFO] Saving weights last step...")
     torch.save(self.discriminator.state_dict(), os.path.join(self.PATH_CKPT,"D_last_it_"+str(step)+".pth"))
