@@ -13,22 +13,18 @@ from utils.helpers import *
 
 from pathlib import Path
 
+import os
+# os.environ['CUDA_VISIBLE_DEVICES']=2,3
+
 # fix seeds for reproducibility
 __seed__ = 42
 torch.manual_seed(__seed__)
 np.random.seed(__seed__)
 
 
-
-# for batch_idx, real_data in enumerate(dataloader):
-#     print(f'batch_idx : {batch_idx}')
-#     print(f'batch size : {real_data.shape[0]}')
-#     print(f'real_data.shape : {real_data.shape}')
-#     if batch_idx == 0 :
-#         break
-
-batch_size=8
-experiment="ID_FACE_GAN_v2_Lage_fnAgeCLF_wd_lr_sch_lsgan"
+batch_size=28
+experiment="ID_FACE_GAN_v2_pretained_clf_wd_lr_sch_lsgan"
+PATH_AGE_CLF="./pretrained_models/Age_clf_Net_last_it_255400.pth"
 
 path = Path.cwd() / "check_points" / experiment
 try :
@@ -40,8 +36,7 @@ else:
 
 ## Init Models
 hyperparams = Hyperparameters(  show_advance=5, 
-                                lr=0.00003, 
-                                lr_age_clf=0.005,
+                                lr=0.0005, 
                                 batch_size=batch_size, 
                                 n_epochs=100,
                                 n_ages_classes=5,
@@ -95,7 +90,8 @@ print(f"[INFO] Number of trainable parameters for the Generator : {compute_nbr_p
 print(f"[INFO] Number of trainable parameters for the Discriminator : {compute_nbr_parameters(discriminator)}")
 print("-----------------------------------------------------")
 
-age_clf = AgeClassifier() # no init - pretrained network.
+print("-----------------------------------------------------")
+
 print(f"[INFO] Initializing the networks...")
 generator=init_weights(generator, init_type='kaiming')
 discriminator=init_weights(discriminator, init_type='kaiming')
@@ -107,10 +103,9 @@ print(f"[INFO] .... using GPU(s) device_ids : {device_ids} ...")
 
 generator=define_network(generator, hyperparams.device, device_ids)
 discriminator=define_network(discriminator, hyperparams.device, device_ids)
-age_clf=define_network(age_clf, hyperparams.device, device_ids)
 print("-----------------------------------------------------")
 
-network = IDFaceGAN(generator, discriminator, age_clf, hyperparams,experiment, gan_type='lsgan')
+network = IDFaceGAN(generator, discriminator, hyperparams, device_ids, experiment, gan_type='lsgan', n_epoch_warmup=1)
 
 ## Start Training
 
@@ -118,7 +113,6 @@ network.train(  dataloader=dataloader,
                 h=256, 
                 w=256, 
                 ckpt="./check_points/",
-                max_step_train_age_clf=100.000,
-                tune_age_clf=True)
+				)
 
 ## Save trained models
