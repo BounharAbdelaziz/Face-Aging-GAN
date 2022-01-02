@@ -1,5 +1,5 @@
-from torch.utils.tensorboard import SummaryWriter
 import numpy as np
+import torch
 
 def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, hyperparams, with_print_logs=True):
 
@@ -29,3 +29,16 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
     
 def compute_nbr_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def init_pretrained(model, PATH, device='cuda', mode='test'):
+    print(f'[INFO] Loading model into device: {device} in mode:{mode}.')
+
+    model.load_state_dict(torch.load(PATH))
+    model.to(device)
+
+    if mode == 'train':
+        model.train()
+    else:
+        model.eval()
+
+    return model
