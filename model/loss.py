@@ -1,12 +1,8 @@
-from torch.utils.tensorboard import SummaryWriter
-import numpy as np
-import torch
 import torch.nn as nn
-import torchvision
-from torch.optim import Adam
 from model.networks import LightCNN_29Layers_v2, VGG_19, AgeClassifier
 from torchvision import transforms
-import torch.nn.functional as F
+from utils.helpers import *
+from model.optimization import define_network
 
 
 class L2Loss(nn.Module):
@@ -181,9 +177,13 @@ class PerceptualLoss(nn.Module):
 
     
 class AgeLoss(nn.Module):
-    def __init__(self, n_ages_classes=5, device='cuda'):
+    def __init__(self, hyperparams, device_ids, PATH_AGE_CLF="./pretrained_models/Age_clf_Net_last_it_255400.pth", mode='test'):
         super(AgeLoss, self).__init__()
-        self.age_clf = AgeClassifier(n_ages_classes, device=device)
+        self.age_clf = init_pretrained( AgeClassifier(), PATH_AGE_CLF, hyperparams.device, mode)
+        self.age_clf=define_network(self.age_clf, hyperparams.device, device_ids)
+
+        print(f"[INFO] Number of parameters for the Discriminator : {compute_nbr_parameters(self.age_clf)}")
+
         # Includes a sigmoid layer before using the BCE Loss
         self.criterion = nn.BCEWithLogitsLoss()
 
@@ -195,7 +195,8 @@ class AgeLoss(nn.Module):
         # print(F.softmax(x_age))
         # print(age_class)
         # print("--------------------------")
-        return sum([ self.criterion(x_age[i], age_class[i, :]) for i in range(x.shape[0]) ])
+        # add clamp to avoid inf/NaN values
+        return sum([ self.criterion(x_age[i], age_class[i, :]).clamp(min=1e-5) for i in range(x.shape[0]) ])
 
 class IDLoss(nn.Module):
     def __init__(self, device='cuda'):
@@ -223,7 +224,6 @@ class IDLoss(nn.Module):
 
             r = r.unsqueeze(0)
             f = f.unsqueeze(0)
-            # print("[INFO] r shape : ", r.shape)
 
             real_embedding = self.face_recog_net(r)
             fake_embedding = self.face_recog_net(f)
@@ -231,7 +231,8 @@ class IDLoss(nn.Module):
             if y_val == 1 or y_val == -1 :
                 # y=1 indicates that the identities should be the same
                 # y=-1 indicates that the identities should be the different
-                loss = loss + self.criterion(real_embedding, fake_embedding, y_val*torch.ones_like(real_embedding))                
+                # real_embedding and fake_embedding are of shape [1, 256] thus target should be of size [256]
+                loss = loss + self.criterion(real_embedding, fake_embedding, y_val*torch.ones_like(real_embedding[0]))     
 
             else :
                 raise ValueError(f'Value {y_val} for the y variable is not valid! Choose 1 or -1.')
