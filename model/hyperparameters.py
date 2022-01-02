@@ -4,7 +4,6 @@ class Hyperparameters():
   
   def __init__( self, 
                 lr=0.00002, 
-                lr_age_clf=0.001,
                 batch_size=2, 
                 n_epochs=400, 
                 use_UNet_archi=True, 
@@ -32,7 +31,6 @@ class Hyperparameters():
 
     self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
     self.lr = lr
-    self.lr_age_clf = lr_age_clf
     self.batch_size = batch_size
     self.n_epochs = n_epochs 
 
