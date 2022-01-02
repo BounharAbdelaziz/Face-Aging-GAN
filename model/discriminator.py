@@ -24,6 +24,7 @@ class Discriminator(nn.Module):
                   use_pad=True, 
                   interpolation_mode='nearest', 
                   kernel_size=3,
+                  is_debug=False,
               ):
     """
       The discriminator is in an encoder shape, we encode the features to a smaller space of features and do the decisions.
@@ -35,6 +36,8 @@ class Discriminator(nn.Module):
     
     # to do the cliping in the encoder and decoder
     features_cliping = lambda x : max(min_features, min(x, max_features))
+
+    self.is_debug = is_debug
 
     ##########################################
     #####             Encoder             ####
@@ -48,12 +51,14 @@ class Discriminator(nn.Module):
       ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, 
                         activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
     )
-    print("------------- input layer -------------")
+    if is_debug:
+      print("------------- input layer -------------")
 
-    print(f"n_inputs : {n_inputs}")
-    print(f"n_output : {n_output}")
+      print(f"n_inputs : {n_inputs}")
+      print(f"n_output : {n_output}")
 
-    print("------------- encoder -------------")
+      print("------------- encoder -------------")
+      
     # conditional GAN - we input also n_ages_classes features maps. 
     # It's the same idea of One-Hot vectors when working with Linear layers, here with conv2dn we inject them as feature maps.
     # to inject the information at the second layer of the discriminator
@@ -67,10 +72,11 @@ class Discriminator(nn.Module):
         n_output = n_output - n_ages_classes
         n_output = features_cliping(n_output * 2)
 
-      print(f"i : {i}")
-      print(f"n_inputs : {n_inputs}")
-      print(f"n_output : {n_output}")
-      print("---------------------------")
+      if is_debug:
+        print(f"i : {i}")
+        print(f"n_inputs : {n_inputs}")
+        print(f"n_output : {n_output}")
+        print("---------------------------")
       self.encoder.append(
         ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
@@ -94,19 +100,30 @@ class Discriminator(nn.Module):
   # -----------------------------------------------------------------------------#
 
   def forward(self, x, fmap_age_lbl) :
-    # print(f'Discriminator input : {x.shape}')
+    if self.is_debug:
+      print(f'Discriminator input : {x.shape}')
+
     out = self.input_layer(x)
-    # print(f'input_layer output : {out.shape}')
-    # print(f'fmap_age_lbl[:,:, :128, :128] shape : {fmap_age_lbl[:,:, :128, :128].shape}')
+    if self.is_debug:
+      print(f'input_layer output : {out.shape}')
+      print(f'fmap_age_lbl[:,:, :128, :128] shape : {fmap_age_lbl[:,:, :128, :128].shape}')
 
     out = torch.column_stack((out, fmap_age_lbl[:,:, :128, :128]))
-    # print(f'encoder output : {out.shape}')
+
+    if self.is_debug:
+      print(f'encoder output : {out.shape}')
 
     out = self.encoder(out)
-    # print(f'encoder output : {out.shape}')
+    if self.is_debug:
+      print(f'encoder output : {out.shape}')
+
     out = self.flatten(out)    
-    # print(f'flatten output : {out.shape}')
+    if self.is_debug:
+      print(f'flatten output : {out.shape}')
+
     out = self.out_layer(out)
+    if self.is_debug:
+      print(f'out_layer output : {out.shape}')
     return out
     
   # -----------------------------------------------------------------------------#
