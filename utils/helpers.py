@@ -5,7 +5,7 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
 
     for k,v in losses.items():
         tb_writer_loss.add_scalar(
-            k, v, global_step=step
+            'loss/{}'.format(k), v, global_step=step
         )
         
     # Adding generated images to tb
@@ -24,7 +24,7 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
     if with_print_logs :
         print(f"Epoch [{epoch}/{hyperparams.n_epochs}]", sep=' ')
         for k,v in losses.items():
-            print(f"{k} : [{v:.4f}]", sep=' - ', end=' - ')
+            print(f"{k} : [{v:.7f}]", sep=' - ', end=' - ')
             
     
 def compute_nbr_parameters(model):
