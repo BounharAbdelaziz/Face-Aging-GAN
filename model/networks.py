@@ -61,47 +61,17 @@ class network_29layers_v2(nn.Module):
     def __init__(self, block, layers, device='cuda', num_classes=80013):
         super(network_29layers_v2, self).__init__()
 
-        """
-        self.network = nn.Sequential(
-            mfm(1, 48, 5, 1, 2),
-            nn.MaxPool2d((2,2)),
-            nn.AvgPool2d((2,2)),
-
-            self._make_layer(block, layers[0], 48, 48),
-
-            group(48, 96, 3, 1, 1),
-            nn.MaxPool2d((2,2)),
-            nn.AvgPool2d((2,2)),
-
-            self._make_layer(block, layers[1], 96, 96),
-
-            group(96, 192, 3, 1, 1),
-            nn.MaxPool2d((2,2)),
-            nn.AvgPool2d((2,2)),
-
-            self._make_layer(block, layers[2], 192, 192),
-
-            group(192, 128, 3, 1, 1),
-
-            self._make_layer(block, layers[3], 128, 128),
-
-            group(128, 128, 3, 1, 1),
-            nn.MaxPool2d((2,2)),
-            nn.AvgPool2d((2,2)),
-
-        ).to(device)
-        """
-        self.conv1    = mfm(1, 48, 5, 1, 2)
-        self.block1   = self._make_layer(block, layers[0], 48, 48)
-        self.group1   = group(48, 96, 3, 1, 1)
-        self.block2   = self._make_layer(block, layers[1], 96, 96)
-        self.group2   = group(96, 192, 3, 1, 1)
-        self.block3   = self._make_layer(block, layers[2], 192, 192)
-        self.group3   = group(192, 128, 3, 1, 1)
-        self.block4   = self._make_layer(block, layers[3], 128, 128)
-        self.group4   = group(128, 128, 3, 1, 1)
-        self.fc       = nn.Linear(8*8*128, 256)
-        self.fc2 = nn.Linear(256, num_classes, bias=False)
+        self.conv1    = mfm(1, 48, 5, 1, 2).to(device)
+        self.block1   = self._make_layer(block, layers[0], 48, 48).to(device)
+        self.group1   = group(48, 96, 3, 1, 1).to(device)
+        self.block2   = self._make_layer(block, layers[1], 96, 96).to(device)
+        self.group2   = group(96, 192, 3, 1, 1).to(device)
+        self.block3   = self._make_layer(block, layers[2], 192, 192).to(device)
+        self.group3   = group(192, 128, 3, 1, 1).to(device)
+        self.block4   = self._make_layer(block, layers[3], 128, 128).to(device)
+        self.group4   = group(128, 128, 3, 1, 1).to(device)
+        self.fc       = nn.Linear(8*8*128, 256).to(device)
+        self.fc2 = nn.Linear(256, num_classes, bias=False).to(device)
 
     def _make_layer(self, block, num_blocks, in_channels, out_channels):
         layers = []
@@ -349,13 +319,13 @@ class AgeClassifierAlexNet(nn.Module):
         if self.backbone == 'alexnet':
             x = self.model.features(x)
             x = self.model.avgpool(x)
+
         elif self.backbone == 'resnet':
             x = self.model(x)
 
         x = self.flatten_layer(x)
-        # print(x.shape)
+
         # logits
         x = self.classifier(x)
-        # x = F.softmax(x, dim=1)
 
         return x
