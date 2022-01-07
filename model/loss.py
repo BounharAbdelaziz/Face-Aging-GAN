@@ -179,10 +179,10 @@ class PerceptualLoss(nn.Module):
 class AgeLoss(nn.Module):
     def __init__(self, hyperparams, device_ids, PATH_AGE_CLF="./pretrained_models/Age_clf_Net_last_it_255400.pth", mode='test'):
         super(AgeLoss, self).__init__()
-        self.age_clf = init_pretrained( AgeClassifier(), PATH_AGE_CLF, hyperparams.device, mode)
+        self.age_clf = load_model( AgeClassifier(), PATH_AGE_CLF, hyperparams.device, mode)
         self.age_clf=define_network(self.age_clf, hyperparams.device, device_ids)
 
-        print(f"[INFO] Number of parameters for the Discriminator : {compute_nbr_parameters(self.age_clf)}")
+        print(f"[INFO] Number of parameters for the AgeClassifier : {compute_nbr_parameters(self.age_clf)}")
 
         # Includes a sigmoid layer before using the BCE Loss
         self.criterion = nn.BCEWithLogitsLoss()

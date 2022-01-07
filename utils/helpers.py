@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import os
+import random
 
 def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, hyperparams, with_print_logs=True):
 
@@ -12,9 +14,9 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
     age_fake=age_fake.cpu().numpy()
     age_fake = (np.argmax(age_fake)+1)*10
 
-    label_fake = "Fake images of age "+str(age_fake)
+    label_fake = "images of age "+str(age_fake)
     tb_writer_fake.add_image(
-        label_fake, img_fake, global_step=step
+        'Fake/{}'.format(label_fake), img_fake, global_step=step
     )
 
     tb_writer_real.add_image(
@@ -30,8 +32,8 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
 def compute_nbr_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def init_pretrained(model, PATH, device='cuda', mode='test'):
-    print(f'[INFO] Loading model into device: {device} in mode:{mode}.')
+def load_model(model, PATH, device='cuda', mode='test'):
+    print(f'[INFO] Loading model from {PATH} into device: {device} in mode:{mode}.')
 
     model.load_state_dict(torch.load(PATH))
     model.to(device)
@@ -42,3 +44,22 @@ def init_pretrained(model, PATH, device='cuda', mode='test'):
         model.eval()
 
     return model
+
+
+def fix_seed(seed=42):
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+def create_checkpoints_dir(path):
+    try :
+        path.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        print(f'[INFO] Checkpoint directory already exists')
+    else:
+        print(f'[INFO] Checkpoint directory has been created')
