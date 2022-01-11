@@ -69,7 +69,7 @@ class IDFGANGenerator(nn.Module):
     # input layer
 
     self.encoder.append(
-      ConvResidualBlock(in_features=n_inputs, out_features=n_output_first, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+      ConvResidualBlock(in_features=n_inputs, out_features=n_output_first, kernel_size=kernel_size, scale='down', stride=2, use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
     )
     
@@ -86,7 +86,7 @@ class IDFGANGenerator(nn.Module):
         print("---------------------------")
 
       self.encoder.append(
-        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', stride=2, use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
       )
 
@@ -112,7 +112,7 @@ class IDFGANGenerator(nn.Module):
         print("---------------------------")
 
       self.bottleneck.append(
-        ConvResidualBlock(in_features=n_output, out_features=n_output, kernel_size=kernel_size, scale='none', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+        ConvResidualBlock(in_features=n_output, out_features=n_output, kernel_size=kernel_size, scale='none', stride=1, use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
       )
 
@@ -141,7 +141,7 @@ class IDFGANGenerator(nn.Module):
         print("---------------------------")
 
       self.decoder.append(
-        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='up', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='up', stride=1, use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
       )
 
@@ -154,7 +154,7 @@ class IDFGANGenerator(nn.Module):
       print(f"n_output : 3")
       print("---------------------------")
 
-    self.out_layer = Conv2DLayer(in_features=n_output, out_features=3, kernel_size=3, scale='none', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, activation='tanh', alpha_relu=alpha_relu)
+    self.out_layer = Conv2DLayer(in_features=n_output, out_features=3, kernel_size=3, stride=1, scale='none', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, activation='tanh', alpha_relu=alpha_relu)
 
   # -----------------------------------------------------------------------------#
   # -----------------------------------------------------------------------------#

@@ -22,6 +22,7 @@ class IDFGANDiscriminator(nn.Module):
                   use_pad=True, 
                   interpolation_mode='nearest', 
                   kernel_size=3,
+                  in_size=128,
                   is_debug=False,
               ):
     """
@@ -36,7 +37,7 @@ class IDFGANDiscriminator(nn.Module):
     features_cliping = lambda x : max(min_features, min(x, max_features))
 
     self.is_debug = is_debug
-
+    self.in_size = in_size
     ##########################################
     #####             Encoder             ####
     ##########################################
@@ -47,7 +48,7 @@ class IDFGANDiscriminator(nn.Module):
     self.input_layer = []
     # input layer    
     self.input_layer.append(
-      ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, 
+      ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='none', stride=1, use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, 
                         activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
     )
     if is_debug:
@@ -77,7 +78,7 @@ class IDFGANDiscriminator(nn.Module):
         print(f"n_output : {n_output}")
         print("---------------------------")
       self.encoder.append(
-        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', stride=2, use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
                           activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
       )
 
@@ -93,8 +94,10 @@ class IDFGANDiscriminator(nn.Module):
     self.encoder = nn.Sequential(*self.encoder)
 
     self.flatten = nn.Flatten()
+    img_size_after_enc = in_size // 2**(down_steps-1)
+    print(f"img_size_after_enc : {img_size_after_enc}")
 
-    self.out_layer = LinearLayer(in_features=n_output * 16 * 16, out_features=output_dim, norm_type='none', activation='lk_relu', alpha_relu=alpha_relu, norm_before=norm_before, use_bias=use_bias)
+    self.out_layer = LinearLayer(in_features=n_output * img_size_after_enc * img_size_after_enc, out_features=output_dim, norm_type='none', activation='lk_relu', alpha_relu=alpha_relu, norm_before=norm_before, use_bias=use_bias)
 
   # -----------------------------------------------------------------------------#
 
@@ -105,9 +108,9 @@ class IDFGANDiscriminator(nn.Module):
     out = self.input_layer(x)
     if self.is_debug:
       print(f'input_layer output : {out.shape}')
-      print(f'fmap_age_lbl[:,:, :128, :128] shape : {fmap_age_lbl[:,:, :128, :128].shape}')
+      print(f'fmap_age_lbl[:,:, :self.in_size, :self.in_size] shape : {fmap_age_lbl[:,:, :self.in_size, :self.in_size].shape}')
 
-    out = torch.column_stack((out, fmap_age_lbl[:,:, :128, :128]))
+    out = torch.column_stack((out, fmap_age_lbl[:,:, :self.in_size, :self.in_size]))
 
     if self.is_debug:
       print(f'encoder output : {out.shape}')
