@@ -6,9 +6,7 @@ import numpy as np
 import os
 from PIL import Image
 
-from pathlib import Path
-import shutil
-from tqdm import tqdm
+
 
 import albumentations
 from albumentations.pytorch import ToTensorV2
@@ -51,7 +49,8 @@ class UTKFaceData(Dataset):
                           )
 
       print("------------------------------------------------------------------------------------------")
-      print(f'[INFO] Total number of images in the training dataset : {len(self.img_domain_1_names)}')
+      print(f'[INFO] Total number of images in the training dataset (domain_1): {self.n_img_domain_1}')
+      print(f'[INFO] Total number of images in the training dataset (domain_2): {self.n_img_domain_2}')
       print("------------------------------------------------------------------------------------------")
 
 
@@ -84,27 +83,4 @@ class UTKFaceData(Dataset):
       return img_1.float(), img_2.float()
 
     
-    # -----------------------------------------------------------------------------#
-
-    def split_domains( path_dataset="../datasets/UTKFace/", domain_1_age=35):
-
-      domain_1_path = Path(path_dataset) / "domain_1"
-      domain_2_path = Path(path_dataset) / "domain_2"
-
-      try :
-          domain_1_path.mkdir(parents=True, exist_ok=False)
-          domain_2_path.mkdir(parents=True, exist_ok=False)
-      except FileExistsError:
-          print(f'[INFO] Dataset already splited.')
-      else:
-          print(f'[INFO] Dataset is being splited...')
-          
-      for filename in tqdm(os.listdir(path_dataset)):
-
-          if filename.split('_')[0] != 'domain':
-              if int(filename.split('_')[0])<domain_1_age:
-                  shutil.move(path_dataset+"/"+filename, str(domain_1_path)+"/"+filename)
-              else:
-                  shutil.move(path_dataset+"/"+filename, str(domain_2_path)+"/"+filename)
-
-    # -----------------------------------------------------------------------------#
+    

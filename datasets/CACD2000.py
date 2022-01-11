@@ -14,12 +14,11 @@ class CACD2000Data(Dataset):
 
     # -----------------------------------------------------------------------------#
 
-    def __init__(self, img_dir="./data/CACD2000/", n_classes=5, n_classes_max=5, h=256, w=256):
+    def __init__(self, img_dir="../datasets/CACD2000/", n_classes=5, h=256, w=256):
 
       """ load the dataset """
 
       self.n_classes = n_classes
-      self.n_classes_max = n_classes_max
       # images
       self.img_dir = img_dir
       self.img_names = [img_name for img_name in os.listdir(img_dir)]
@@ -54,7 +53,7 @@ class CACD2000Data(Dataset):
       full_path = os.path.join(self.img_dir, self.img_names[idx]) 
       
       # we take the max in case we have an age between 0 and 9. We don't want to have a negative class
-      real_age_class = torch.zeros(self.n_classes_max).to('cuda:0')
+      real_age_class = torch.zeros(self.n_classes).to('cuda:0')
       idx_real_age_class = min(max(int(self.img_names[idx].split('_')[0]) // 10 - 1, 0), 4)
       real_age_class[idx_real_age_class] = 1
 
@@ -70,7 +69,6 @@ class CACD2000Data(Dataset):
 
         injected_age_class = torch.zeros(self.n_classes).to('cuda:0') #.type(torch.LongTensor).to('cuda:0')
         injected_age_class[idx_one.item()] = 1
-        # print(f'injected_age_class : {injected_age_class}')
         
         image_with_lbl = torch.row_stack((image_normalized, fmap))        
 

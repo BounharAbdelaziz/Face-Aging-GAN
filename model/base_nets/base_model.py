@@ -4,11 +4,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 class BaseModel(nn.Module):
 
-    def __init__(self, hyperparams, experiment="train_dnn") -> None:
-        super().__init__()
+    def __init__(self, experiment="train_dnn") -> None:
+        super(BaseModel, self).__init__()
         # Tensorboard logs
         self.experiment = experiment
-        self.hyperparams = hyperparams
+        # self.hyperparams = hyperparams
 
         self.tb_writer_fake = SummaryWriter(f"logs/{self.experiment}_GAN/fake_{self.experiment}")
         self.tb_writer_real = SummaryWriter(f"logs/{self.experiment}_GAN/real_{self.experiment}")

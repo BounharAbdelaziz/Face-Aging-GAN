@@ -1,17 +1,15 @@
 
 import torch
-import torch.nn as nn
 
-from model.base_model import BaseModel
+from model.base_nets.base_model import BaseModel
 from model.loss import GenLoss, DiscLoss
 
-import pytorch_warmup as warmup
 from model.optimization import get_optimizer, get_scheduler, get_lr_warmup
 
 class BaseModelGAN(BaseModel):
 
     def __init__(self, generator, discriminator, options, hyperparams) -> None:
-        super().__init__()
+        super(BaseModelGAN, self).__init__(experiment=options.experiment_name)
         
         self.generator = generator
         self.discriminator = discriminator
@@ -19,6 +17,8 @@ class BaseModelGAN(BaseModel):
         self.is_train = options.is_train
         self.hyperparams = hyperparams
         self.options = options
+
+        self.eps = 1e-8
 
         # Loss functions
         self.loss_names = []
@@ -40,8 +40,9 @@ class BaseModelGAN(BaseModel):
         self.scheduler_disc = get_scheduler(self.opt_disc, options)
 
         # Learning Rate Warmup stage
-        self.warmup_scheduler_gen = get_lr_warmup(self.opt_gen, options)
-        self.warmup_scheduler_disc = get_lr_warmup(self.opt_disc, options)
+        if options.warmup_period:
+            self.warmup_scheduler_gen = get_lr_warmup(self.opt_gen, options)
+            self.warmup_scheduler_disc = get_lr_warmup(self.opt_disc, options)
         
         # Gradient scaler
         self.g_scaler = torch.cuda.amp.GradScaler()
