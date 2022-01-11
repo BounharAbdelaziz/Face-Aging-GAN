@@ -26,22 +26,24 @@ class CycleGAN(BaseModel):
     # -----------------------------------------------------------------------------#
     # -----------------------------------------------------------------------------#
 
-    def __init__(self, hyperparams, options, experiment="train_dnn") -> None:
+    def __init__(self, hyperparams, options) -> None:
         super(CycleGAN, self).__init__()
+
         self.hyperparams = hyperparams
         self.options = options
+        self.experiment = options.experiment_name
+
         self.loss_names = []
         self.loss_names.append("loss_G")
         self.loss_names.append("loss_D")
 
-        self.experiment = experiment
+        self.eps = 1e-8
 
         # Gradient scaler
         self.g1_scaler = torch.cuda.amp.GradScaler()
         self.g2_scaler = torch.cuda.amp.GradScaler()
         self.d1_scaler = torch.cuda.amp.GradScaler()
         self.d2_scaler = torch.cuda.amp.GradScaler()
-        # self.hyperparams = hyperparams
 
         # Tensorboard
         self.tb_writer_fake = SummaryWriter(f"logs/{self.experiment}_GAN/fake_{self.experiment}")
@@ -49,18 +51,17 @@ class CycleGAN(BaseModel):
         self.tb_writer_loss = SummaryWriter(f"logs/{self.experiment}_GAN/loss_train_{self.experiment}")
 
         # Generators
-        self.gen_1 = CycleGANGenerator(in_channels=3, n_res_layers=9).to(self.hyperparams.device)
-        self.gen_2 = CycleGANGenerator(in_channels=3, n_res_layers=9).to(self.hyperparams.device)
+        self.gen_1 = CycleGANGenerator(in_channels=3, n_res_layers=9, norm_type=options.norm_type).to(self.hyperparams.device)
+        self.gen_2 = CycleGANGenerator(in_channels=3, n_res_layers=9, norm_type=options.norm_type).to(self.hyperparams.device)
 
         # Discriminators
-        self.disc_1 = CycleGANDiscriminator(in_channels=3).to(self.hyperparams.device)
-        self.disc_2 = CycleGANDiscriminator(in_channels=3).to(self.hyperparams.device)
+        self.disc_1 = CycleGANDiscriminator(in_channels=3, norm_type=options.norm_type).to(self.hyperparams.device)
+        self.disc_2 = CycleGANDiscriminator(in_channels=3, norm_type=options.norm_type).to(self.hyperparams.device)
 
         helper.setup_network(self.gen_1, self.hyperparams, type="generator")
         helper.setup_network(self.gen_2, self.hyperparams, type="generator")
         helper.setup_network(self.disc_1, self.hyperparams, type="discriminator")
         helper.setup_network(self.disc_2, self.hyperparams, type="discriminator")
-        
 
         # Optimizers
         self.opt_disc_1 = get_optimizer(self.disc_1, self.options)
@@ -103,6 +104,7 @@ class CycleGAN(BaseModel):
             self.loss_names.append("loss_ID_cycle")
 
         self.loss_cycle = nn.L1Loss().to(self.hyperparams.device)
+        self.loss_l2_ = nn.MSELoss().to(self.hyperparams.device)
         print(f'[INFO] Using losses : {self.loss_names}')
 
     # -----------------------------------------------------------------------------#
@@ -128,121 +130,117 @@ class CycleGAN(BaseModel):
                 img_1 = img_1.to(self.hyperparams.device)
                 img_2 = img_2.to(self.hyperparams.device)
 
-                # Train Discriminators 1 and 2
-                with torch.cuda.amp.autocast():
-                    # From domain 1 to domain 2
-                    fake_img_1 = self.gen_1(img_2) # takes an image in domain 2 and generates one in domain 1
-                    D_1_real = self.disc_1(img_1) # discriminates real/fake images in domain 2
-                    D_1_fake = self.disc_1(fake_img_1.detach())
-                    # Least-square GAN by default
-                    D_1_real_loss = self.loss_MSE(D_1_real, torch.ones_like(D_1_real))
-                    D_1_fake_loss = self.loss_MSE(D_1_fake, torch.zeros_like(D_1_fake))
-                    D_1_loss = D_1_real_loss + D_1_fake_loss
+                with torch.autograd.set_detect_anomaly(True):
+                    # Train Discriminators 1 and 2
+                    with torch.cuda.amp.autocast():
+                        # From domain 1 to domain 2
+                        fake_img_1 = self.gen_1(img_2) # takes an image in domain 2 and generates one in domain 1
+                        D_1_real = self.disc_1(img_1) # discriminates real/fake images in domain 1
+                        D_1_fake = self.disc_1(fake_img_1.detach())
+                        # Least-square GAN by default
+                        D_1_real_loss = self.loss_l2_(D_1_real, torch.ones_like(D_1_real))
+                        D_1_fake_loss = self.loss_l2_(D_1_fake, torch.zeros_like(D_1_fake))
+                        D_1_loss = (D_1_real_loss + D_1_fake_loss) * self.options.lambda_D + self.eps
 
-                    # From domain 2 to domain 1
-                    fake_img_2 = self.gen_2(img_1) # takes an image in domain 1 and generates one in domain 2
-                    D_2_real = self.disc_2(img_2) # discriminates real/fake images in domain 1
-                    D_2_fake = self.disc_2(fake_img_2.detach())
-                    D_2_real_loss = self.loss_MSE(D_2_real, torch.ones_like(D_2_real))
-                    D_2_fake_loss = self.loss_MSE(D_2_fake, torch.zeros_like(D_2_fake))
-                    D_2_loss = D_2_real_loss + D_2_fake_loss
-
-
-                self.opt_disc_1.zero_grad()
-                self.d1_scaler.scale(D_1_loss).backward()
-                self.d1_scaler.step(self.opt_disc_1)
-                self.d1_scaler.update()
-
-                self.opt_disc_2.zero_grad()
-                self.d2_scaler.scale(D_2_loss).backward()
-                self.d2_scaler.step(self.opt_disc_2)
-                self.d2_scaler.update()
+                        # From domain 2 to domain 1
+                        fake_img_2 = self.gen_2(img_1) # takes an image in domain 1 and generates one in domain 2
+                        D_2_real = self.disc_2(img_2) # discriminates real/fake images in domain 2
+                        D_2_fake = self.disc_2(fake_img_2.detach())
+                        D_2_real_loss = self.loss_l2_(D_2_real, torch.ones_like(D_2_real))
+                        D_2_fake_loss = self.loss_l2_(D_2_fake, torch.zeros_like(D_2_fake))
+                        D_2_loss = (D_2_real_loss + D_2_fake_loss) * self.options.lambda_D + self.eps
 
 
-                # self.opt_disc_1.zero_grad()
-                # D_1_loss.backward()
-                # self.opt_disc_1.step()
+                    self.opt_disc_1.zero_grad()
+                    self.d1_scaler.scale(D_1_loss).backward()
+                    self.d1_scaler.step(self.opt_disc_1)
+                    self.d1_scaler.update()
 
-                # self.opt_disc_2.zero_grad()
-                # D_2_loss.backward()
-                # self.opt_disc_2.step()
-
-
-                # Train Generators 1 and 2
-                with torch.cuda.amp.autocast():
-                    # adversarial loss for both generators
-                    D_1_fake = self.disc_1(fake_img_1) # discriminates real/fake images in domain 2
-                    D_2_fake = self.disc_2(fake_img_2) # discriminates real/fake images in domain 1
-                    # Least-square GAN by default
-                    loss_G_1 = self.loss_MSE(D_1_fake, torch.ones_like(D_1_fake))
-                    loss_G_2 = self.loss_MSE(D_2_fake, torch.ones_like(D_2_fake))
-
-                    # cycle loss
-                    cycle_1 = self.gen_1(fake_img_2) # G1 takes a fake image in domain 1 and generates back the original input image in domain 2
-                    cycle_2 = self.gen_2(fake_img_1) # G2 takes a fake image in domain 1 and generates back the original input image in domain 2
-                    cycle_1_loss = self.loss_cycle(img_2, cycle_1)
-                    cycle_2_loss = self.loss_cycle(img_1, cycle_2)
-
-                    loss_G1_total = loss_G_1 + cycle_1_loss * self.options.lambda_cycle
-                    loss_G2_total = loss_G_2 + cycle_2_loss * self.options.lambda_cycle
-
-                    # identity loss
-                    if self.options.lambda_ID_cycle:
-                        identity_1 = self.gen_1(img_2)
-                        identity_2 = self.gen_2(img_1)
-                        identity_1_loss = self.loss_ID_cycle(img_2, identity_1)
-                        identity_2_loss = self.loss_ID_cycle(img_1, identity_2)
-                        loss_G1_total = loss_G1_total + identity_1_loss * self.options.lambda_ID_cycle
-                        loss_G2_total = loss_G2_total + identity_2_loss * self.options.lambda_ID_cycle
-                    
-                    # Loss functions
-                    if self.options.lambda_MSE:
-                        loss_MSE_1 =  self.options.lambda_MSE*self.loss_MSE(fake_img_1, img_1) + self.eps
-                        loss_MSE_2 =  self.options.lambda_MSE*self.loss_MSE(fake_img_2, img_2) + self.eps
-                        loss_G1_total = loss_G1_total + loss_MSE_1
-                        loss_G2_total = loss_G2_total + loss_MSE_2
-
-                    if self.options.lambda_L1:
-                        loss_L1_1 =  self.options.lambda_L1*self.loss_L1(fake_img_1, img_1) + self.eps
-                        loss_L1_2 =  self.options.lambda_L1*self.loss_L1(fake_img_2, img_2) + self.eps
-                        loss_G1_total = loss_G1_total + loss_L1_1
-                        loss_G2_total = loss_G2_total + loss_L1_2
-
-                    if self.options.lambda_PCP:
-                        loss_PCP_1 = self.options.lambda_PCP*self.loss_PCP(fake_img_1, img_1)
-                        loss_PCP_2 = self.options.lambda_PCP*self.loss_PCP(fake_img_2, img_2)
-                        loss_G1_total = loss_G1_total + loss_PCP_1
-                        loss_G2_total = loss_G2_total + loss_PCP_2
+                    self.opt_disc_2.zero_grad()
+                    self.d2_scaler.scale(D_2_loss).backward()
+                    self.d2_scaler.step(self.opt_disc_2)
+                    self.d2_scaler.update()
 
 
-                    if self.options.lambda_ID:
-                        loss_ID_1 = self.options.lambda_ID*self.loss_ID(fake_img_1, img_1, y_val=1)
-                        loss_ID_2 = self.options.lambda_ID*self.loss_ID(fake_img_2, img_2, y_val=1)
-                        loss_G1_total = loss_G1_total + loss_ID_1
-                        loss_G2_total = loss_G2_total + loss_ID_2
+                    # self.opt_disc_1.zero_grad()
+                    # D_1_loss.backward()
+                    # self.opt_disc_1.step()
 
-                # print("loss_G1_total :",loss_G1_total)
-                # print("D_1_loss :",loss_G2_total)
-                # print("loss_G2_total :",loss_G2_total)
-                # print("D_2_loss :",loss_G2_total)
+                    # self.opt_disc_2.zero_grad()
+                    # D_2_loss.backward()
+                    # self.opt_disc_2.step()
 
-                self.opt_gen_1.zero_grad()
-                self.g1_scaler.scale(loss_G1_total).backward(retain_graph=True)
-                self.g1_scaler.step(self.opt_gen_1)
-                self.g1_scaler.update()
 
-                self.opt_gen_2.zero_grad()
-                self.g2_scaler.scale(loss_G2_total).backward()
-                self.g2_scaler.step(self.opt_gen_2)
-                self.g2_scaler.update()
+                    # Train Generators 1 and 2
+                    with torch.cuda.amp.autocast():
+                        # adversarial loss for both generators
+                        D_1_fake = self.disc_1(fake_img_1) # discriminates real/fake images in domain 2
+                        D_2_fake = self.disc_2(fake_img_2) # discriminates real/fake images in domain 1
+                        # Least-square GAN by default
+                        loss_G_1 = self.loss_l2_(D_1_fake, torch.ones_like(D_1_fake))
+                        loss_G_2 = self.loss_l2_(D_2_fake, torch.ones_like(D_2_fake))
 
-                # self.opt_gen_1.zero_grad()
-                # loss_G1_total.backward()
-                # self.opt_gen_1.step()
+                        # cycle loss
+                        cycle_1 = self.gen_1(fake_img_2) # G1 takes a fake image in domain 2 and generates back the original input image in domain 1
+                        cycle_2 = self.gen_2(fake_img_1) # G2 takes a fake image in domain 1 and generates back the original input image in domain 2
+                        cycle_1_loss = self.loss_cycle(img_1, cycle_1) + self.eps
+                        cycle_2_loss = self.loss_cycle(img_2, cycle_2) + self.eps
 
-                # self.opt_gen_2.zero_grad()
-                # loss_G2_total.backward()
-                # self.opt_gen_2.step()
+                        loss_G1_total = loss_G_1 + cycle_1_loss * self.options.lambda_cycle
+                        loss_G2_total = loss_G_2 + cycle_2_loss * self.options.lambda_cycle
+
+                        # identity loss
+                        if self.options.lambda_ID_cycle:
+                            identity_1 = self.gen_1(img_2)
+                            identity_2 = self.gen_2(img_1)
+                            identity_1_loss = self.loss_ID_cycle(img_2, identity_1) + self.eps
+                            identity_2_loss = self.loss_ID_cycle(img_1, identity_2) + self.eps
+                            loss_G1_total = loss_G1_total + identity_1_loss * self.options.lambda_ID_cycle
+                            loss_G2_total = loss_G2_total + identity_2_loss * self.options.lambda_ID_cycle
+                        
+                        # Loss functions
+                        if self.options.lambda_MSE:
+                            loss_MSE_1 =  self.options.lambda_MSE*self.loss_MSE(fake_img_1, img_1)
+                            loss_MSE_2 =  self.options.lambda_MSE*self.loss_MSE(fake_img_2, img_2)
+                            loss_G1_total = loss_G1_total + loss_MSE_1
+                            loss_G2_total = loss_G2_total + loss_MSE_2
+
+                        if self.options.lambda_L1:
+                            loss_L1_1 =  self.options.lambda_L1*self.loss_L1(fake_img_1, img_1) + self.eps
+                            loss_L1_2 =  self.options.lambda_L1*self.loss_L1(fake_img_2, img_2) + self.eps
+                            loss_G1_total = loss_G1_total + loss_L1_1
+                            loss_G2_total = loss_G2_total + loss_L1_2
+
+                        if self.options.lambda_PCP:
+                            loss_PCP_1 = self.options.lambda_PCP*self.loss_PCP(fake_img_1, img_1)
+                            loss_PCP_2 = self.options.lambda_PCP*self.loss_PCP(fake_img_2, img_2)
+                            loss_G1_total = loss_G1_total + loss_PCP_1
+                            loss_G2_total = loss_G2_total + loss_PCP_2
+
+
+                        if self.options.lambda_ID:
+                            loss_ID_1 = self.options.lambda_ID*self.loss_ID(fake_img_1, img_1, y_val=1)
+                            loss_ID_2 = self.options.lambda_ID*self.loss_ID(fake_img_2, img_2, y_val=1)
+                            loss_G1_total = loss_G1_total + loss_ID_1
+                            loss_G2_total = loss_G2_total + loss_ID_2
+
+                    self.opt_gen_1.zero_grad()
+                    self.g1_scaler.scale(loss_G1_total).backward(retain_graph=True)
+                    self.g1_scaler.step(self.opt_gen_1)
+                    self.g1_scaler.update()
+
+                    self.opt_gen_2.zero_grad()
+                    self.g2_scaler.scale(loss_G2_total).backward()
+                    self.g2_scaler.step(self.opt_gen_2)
+                    self.g2_scaler.update()
+
+                    # self.opt_gen_1.zero_grad()
+                    # loss_G1_total.backward(retain_graph=True)
+                    # self.opt_gen_1.step()
+
+                    # self.opt_gen_2.zero_grad()
+                    # loss_G2_total.backward()
+                    # self.opt_gen_2.step()
 
                 
                 # Learning rate scheduler
@@ -323,7 +321,7 @@ class CycleGAN(BaseModel):
                         losses["lr_g2"] = get_last_lr_bis(self.opt_gen_2) #self.scheduler_g2.get_last_lr()[0]
                         losses["lr_d2"] = get_last_lr_bis(self.opt_disc_2) #self.scheduler_d2.get_last_lr()[0]
                         
-                        helper.write_logs_tb_cyclegan(self.tb_writer_loss, self.tb_writer_fake, self.tb_writer_real, images_fakes, images_real, losses, step, epoch, self.hyperparams, with_print_logs=True)
+                        helper.write_logs_tb_cyclegan(self.tb_writer_loss, self.tb_writer_fake, self.tb_writer_real, images_fakes, images_real, losses, step, epoch, self.hyperparams, with_print_logs=True, experiment=self.experiment)
 
                         step = step + batch_idx
 
