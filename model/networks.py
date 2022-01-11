@@ -7,7 +7,8 @@ import torch.nn.functional as F
 import torchvision.models as models
 import torch.nn.functional as F
 
-from model.block import LinearLayer, ConvResidualBlock, LinearResidualBlock
+from model.block import LinearLayer, ConvResidualBlock, LinearResidualBlock, ActivationLayer,NormalizationLayer
+
 
 # -----------------------------------------------------------------------------#
 #                           Identity Preservation Module                       #
@@ -139,7 +140,7 @@ class VGG_19(nn.Module):
         return x
 
 # -----------------------------------------------------------------------------#
-#                     Age Classifier - Finetuned AlexNet                       #
+#                               Age Classifier                                 #
 # -----------------------------------------------------------------------------#
 
 class AgeClassifier(nn.Module):
@@ -151,7 +152,7 @@ class AgeClassifier(nn.Module):
                   activation='lk_relu', 
                   alpha_relu=0.2, 
                   use_bias=True,
-                  min_features = 32, 
+                  min_features = 16, 
                   max_features=512,
                   n_inputs=3, 
                   n_output = 32, 
@@ -180,7 +181,7 @@ class AgeClassifier(nn.Module):
     self.input_layer = []
     # input layer    
     self.input_layer.append(
-      ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, 
+      ConvResidualBlock2(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type='none', norm_before=norm_before, 
                         activation=activation, alpha_relu=alpha_relu)
     )
     if is_debug:
@@ -205,8 +206,8 @@ class AgeClassifier(nn.Module):
             print("---------------------------")
 
       self.encoder.append(
-        ConvResidualBlock(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
-                          activation=activation, alpha_relu=alpha_relu)
+        ConvResidualBlock2(in_features=n_inputs, out_features=n_output, kernel_size=kernel_size, scale='down', use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, norm_before=norm_before, 
+                          activation=activation, alpha_relu=alpha_relu, is_debug=is_debug)
       )
 
       if i != down_steps-1 :
@@ -238,8 +239,8 @@ class AgeClassifier(nn.Module):
   # -----------------------------------------------------------------------------#
 
   def forward(self, x) :
-
     if self.is_debug:
+        print("---------------------------------------")
         print(f'AgeClassifier input : {x.shape}')
 
     out = self.input_layer(x)
@@ -329,3 +330,135 @@ class AgeClassifierAlexNet(nn.Module):
         x = self.classifier(x)
 
         return x
+
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+class Conv2DLayer2(nn.Module):
+    def __init__(self, in_features, out_features, kernel_size=3, scale='none', use_pad=True, use_bias=True, norm_type='bn', norm_before=True, activation='lk_relu', alpha_relu=0.15, interpolation_mode='nearest'):
+        super().__init__()
+        
+        # Sometimes, doing normalization before activation helps stabilizing the training
+        self.norm_before = norm_before
+        self.use_pad = use_pad
+
+        # upsampling or downsampling
+        stride = 2 if scale == 'down' else 1
+
+        if scale == 'up':
+            self.scale_layer = lambda x : nn.functional.interpolate(x, scale_factor=2, mode=interpolation_mode)
+        else :
+            self.scale_layer = lambda x : x
+
+        # Padding layer
+        self.padding = nn.ReflectionPad2d(kernel_size // 2) 
+
+        # Convolutional layer
+        self.conv = nn.Conv2d(in_channels=in_features, out_channels=out_features, kernel_size=kernel_size, stride=stride, bias=use_bias)
+
+        # Activation layer
+        if activation == 'lk_relu':
+            self.activation = ActivationLayer(activation=activation, alpha_relu=alpha_relu)
+        else :
+            self.activation = ActivationLayer(activation=activation)
+
+        # Normalization layer
+        self.norm = NormalizationLayer(in_features=out_features, norm_type=norm_type)
+
+    def forward(self, x):
+        
+        # upsampling or downsampling 
+        out = self.scale_layer(x)
+
+        if self.use_pad :
+            out = self.padding(out)
+
+        out = self.conv(out)
+
+        if self.norm_before :
+            out = self.norm(out)
+            out = self.activation(out)
+
+        else :
+            out = self.activation(out)
+            out = self.norm(out)
+
+        return out
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+
+class ConvResidualBlock2(nn.Module):
+    """ Residual blocks idea is to feed the output of one layer to another layer after a number of hops (generaly 2 to 3). Here we are using a hops of 2.
+        It can be expressed in the form : F(x) + x, where x is the input and F modeling one or many layers.
+        The benefits of using Residual Blocks is to overcome the vanishing gradients problem, and thus training very deep networks.
+    """
+    def __init__(self, in_features, out_features, kernel_size=3, scale='none', use_pad=True, use_bias=True, norm_type='bn', norm_before=True, activation='lk_relu', alpha_relu=0.15, interpolation_mode='nearest', is_debug=False):
+        super().__init__()
+
+        self.is_debug = is_debug
+        # Sometimes, doing normalization before activation helps stabilizing the training
+        self.norm_before = norm_before
+
+        # Computing the shortcut, we can use convolution or only identity
+        if scale == 'none' and in_features == out_features :
+            self.identity = lambda x : x
+        else :
+            self.identity = Conv2DLayer2(in_features=in_features, out_features=out_features, kernel_size=kernel_size, scale=scale, use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, 
+                                 norm_before=norm_before, activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
+
+        # defining the scaling, we don't want to do 2 up sampling or 2 downsampling in one block, therefore :
+        if scale == 'none' :
+            scales = ['none', 'none']
+
+        if scale == 'up' :
+            # start by upsampling
+            scales = ['up', 'none']
+
+        if scale == 'down' :
+            # downsampling in the end
+            scales = ['none', 'down']
+
+        # Convolutional layers that defines the Residual Block
+        self.conv1 = Conv2DLayer2(in_features=in_features, out_features=out_features, kernel_size=kernel_size, scale=scales[0], use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, 
+                                 norm_before=norm_before, activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
+
+        self.conv2 = Conv2DLayer2(in_features=out_features, out_features=out_features, kernel_size=kernel_size, scale=scales[1], use_pad=use_pad, use_bias=use_bias, norm_type=norm_type, 
+                                 norm_before=norm_before, activation=activation, alpha_relu=alpha_relu, interpolation_mode=interpolation_mode)
+
+    
+
+    def forward(self, x):
+
+        # identity = self.identity(x)
+        # out = self.conv1(x)
+        # out = self.conv2(out)
+        # out = out + identity
+
+        if self.is_debug:
+            print("---------------------------------------")
+
+            print(f'ConvResidualBlock input : {x.shape}')
+
+        identity = self.identity(x)
+        if self.is_debug:
+            print(f'identity shape : {identity.shape}')
+
+        out = self.conv1(x)
+        if self.is_debug:
+            print(f'conv1 out : {out.shape}')
+
+
+        out = self.conv2(out)
+        if self.is_debug:
+            print(f'conv2 out : {out.shape}')
+
+
+        out = out + identity
+        if self.is_debug:
+            print(f'out : {out.shape}')
+
+        return out
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
