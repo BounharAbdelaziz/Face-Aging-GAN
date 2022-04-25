@@ -21,6 +21,7 @@ class FFHQData(Dataset):
       self.do_transform = do_transform
       self.img_names = [img_name for img_name in os.listdir(options.img_dir)]
       self.n_ages_classes = options.n_ages_classes
+      self.start_age = hyperparams.start_age
 
       self.h = options.img_size
       self.w = options.img_size
@@ -56,12 +57,21 @@ class FFHQData(Dataset):
       full_path = os.path.join(self.options.img_dir, self.img_names[idx]) 
       # we take the max in case we have an age between 0 and 9. We don't want to have a negative class
       real_age_class = torch.zeros(self.n_ages_classes).to(self.hyperparams.device)
-      idx_real_age_class = min(max(int(self.img_names[idx].split('_')[0]) // 10 - 1, 0), 4)
+      idx_real_age_class = min(max(int(self.img_names[idx].split('_')[0]) // 10 - self.start_age // 10 , 0), self.n_ages_classes-1)
       real_age_class[idx_real_age_class] = 1
+      
+      not_opened = True
+      while not_opened:
+        try:
+          image = Image.open(full_path).convert('RGB')
+        except Exception as e:
+          print(f'[WARN] An error is occuring with Image.open({full_path}). {e}')
+        finally :
+          not_opened = False
 
-      image = Image.open(full_path).convert('RGB')
       if self.do_transform:
         image = self.transforms(image).to(self.hyperparams.device)
+        
       _, h, w = image.shape
 
       if self.n_ages_classes > 0 :
