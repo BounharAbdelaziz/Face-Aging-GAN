@@ -195,8 +195,8 @@ class AgeLoss(nn.Module):
         # print(F.softmax(x_age))
         # print(age_class)
         # print("--------------------------")
-        # add clamp to avoid inf/NaN values
-        return sum([ self.criterion(x_age[i], age_class[i, :]).clamp(min=1e-5) for i in range(x.shape[0]) ])
+        # add clamp to avoid inf/NaN values, we send also the classified age at index 0 for tensorboard
+        return sum([ self.criterion(x_age[i], age_class[i, :]).clamp(min=1e-5) for i in range(x.shape[0]) ]), x_age[0]
 
 class IDLoss(nn.Module):
     def __init__(self, device='cuda'):
