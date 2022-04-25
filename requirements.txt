@@ -5,11 +5,12 @@ Pillow==8.4.0
 pip==21.3.1
 scikit_learn==1.0.2
 setuptools==60.2.0
-torch==1.10.1
+torch==1.11.0
 torchvision==0.11.2
 tqdm==4.62.3
 wheel==0.37.1
 tensorboard==2.4.1
+pathlib3x
 Pathlib
 pytorch_warmup==0.0.4
 albumentations==1.1.0
