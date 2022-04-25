@@ -17,6 +17,7 @@ class Hyperparameters():
                 n_inputs=3, 
                 n_output_disc=1, 
                 n_ages_classes=5, 
+                start_age=10,
                 alpha_relu=0.15, 
                 show_advance=5, 
                 save_weights=500,
@@ -47,6 +48,8 @@ class Hyperparameters():
 
     # number of ages intervals (n_ages_classes=5 -> from 1 to 50, step of 10 ages)
     self.n_ages_classes = n_ages_classes
+    # used to shift the division, should be a multiple of 10 (10-20-30-...)
+    self.start_age = start_age
     # for the conditional GAN we include the one hot feature map of the age
     self.input_channels_gen = n_inputs + n_ages_classes
     self.n_output_disc = n_output_disc
