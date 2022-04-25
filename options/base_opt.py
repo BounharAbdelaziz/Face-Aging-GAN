@@ -1,10 +1,7 @@
 
 import argparse
 import os
-from utils import helpers
 import torch
-import model
-import datasets as data
 from pathlib import Path
 
 class BaseOptions():
@@ -36,7 +33,7 @@ class BaseOptions():
         # dataset parameters
         parser.add_argument('--process_ffhq', action='store_true', help='Adds labels to FFHQ filenames to facilitate data loading')
         parser.add_argument('--process_utkface', action='store_true', help='Adds labels to UTKFace filenames to facilitate data loading')
-        parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')
+        parser.add_argument('--num_threads', default=0, type=int, help='# threads for loading data')
         parser.add_argument('--batch_size', type=int, default=5, help='input batch size')
         parser.add_argument('--img_size', type=int, default=256, help='scale images to this size')
         parser.add_argument('--n_ages_classes', type=int, default=5, help='Number of age classes. This specify the input shape as follow: 3 + n_ages_classes ( which makes an input of 8 channels by default). It also depends on the age classifier.')
