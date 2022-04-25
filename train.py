@@ -6,11 +6,10 @@ from model.hyperparameters import Hyperparameters
 from model.idfgan.id_face_gan import IDFaceGAN
 from model.idfgan.generator import IDFGANGenerator
 from model.idfgan.discriminator import IDFGANDiscriminator
-from model.optimization import init_weights, define_network
 
 from pathlib import Path
 
-from utils.helpers import fix_seed, compute_nbr_parameters, create_checkpoints_dir
+from utils.helpers import fix_seed, compute_nbr_parameters, create_checkpoints_dir, setup_network
 from options.training_opt import TrainOptions
 
 if __name__ == "__main__":
@@ -35,7 +34,8 @@ if __name__ == "__main__":
                                     lambda_pcp=options.lambda_PCP,
                                     lambda_id=options.lambda_ID,
                                     lambda_mse=options.lambda_MSE,
-                                    num_threads=options.num_threads)
+                                    num_threads=options.num_threads,
+                                    n_ages_classes=6)
 
     # dumping hyperparams to keep track of them for later comparison/use
     path_dump_hyperparams = path / "train_options_.txt"
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     else:
         print(f"[ERROR] Dataset name {options.dataset_name} unkown.")
         raise
-    dataloader = DataLoader(dataset, batch_size=options.batch_size, shuffle=True)#, num_workers=hyperparams.num_threads) 
+    dataloader = DataLoader(dataset, batch_size=options.batch_size, shuffle=True, num_workers=hyperparams.num_threads) 
 
     # Generator
     generator = IDFGANGenerator(  norm_type=options.norm_type,
@@ -58,43 +58,37 @@ if __name__ == "__main__":
                             alpha_relu=0.2, 
                             use_bias=True,
                             min_features = 32, 
-                            max_features=256,
+                            max_features=128,
                             n_inputs=3, 
                             n_output_first = 64,                
                             n_ages_classes=hyperparams.n_ages_classes, 
                             down_steps=3, 
-                            bottleneck_size=9, 
+                            bottleneck_size=3, 
                             up_steps=3,
                             use_pad=True, 
                             interpolation_mode='bicubic', 
                             kernel_size=3,
                             use_UNet_archi=0,
                             is_debug=options.verbose,
-                        ) # need to fix shapes problems for UNet archi
+                ) # need to fix shapes problems for UNet archi
 
     # Discriminator
-    discriminator = IDFGANDiscriminator(norm_type=options.norm_type, down_steps=4, max_features=256, in_size=options.img_size, n_ages_classes=hyperparams.n_ages_classes, activation='lk_relu', is_debug=options.verbose)
+    discriminator = IDFGANDiscriminator(norm_type=options.norm_type, 
+                                        down_steps=4, 
+                                        max_features=128, 
+                                        in_size=options.img_size, 
+                                        n_ages_classes=hyperparams.n_ages_classes, 
+                                        activation='lk_relu', 
+                                        is_debug=options.verbose
+                    )
 
-    print("-----------------------------------------------------")
-    print(f"[INFO] Number of trainable parameters for the Generator : {compute_nbr_parameters(generator)}")
-    print(f"[INFO] Number of trainable parameters for the Discriminator : {compute_nbr_parameters(discriminator)}")
-    print("-----------------------------------------------------")
-    print(f"[INFO] Initializing the networks...")
-    generator=init_weights(generator, init_type=options.init_type)
-    discriminator=init_weights(discriminator, init_type=options.init_type)
-    print("-----------------------------------------------------")
-    device_ids = [i for i in range(torch.cuda.device_count())]
-    print(f"[INFO] Setting up {len(device_ids)} GPU(s) for the networks...")
-    print(f"[INFO] .... using GPU(s) device_ids : {device_ids} ...")
-    print("-----------------------------------------------------")
-
-    generator=define_network(generator, hyperparams.device, device_ids)
-    discriminator=define_network(discriminator, hyperparams.device, device_ids)
-    print("-----------------------------------------------------")
+    setup_network(generator, hyperparams, type="Generator", init_type=options.init_type)
+    setup_network(discriminator, hyperparams, type="Discriminator", init_type=options.init_type)
 
     num_steps = len(dataloader) * hyperparams.n_epochs
     print(options.gan_type)
 
+    device_ids = [i for i in range(torch.cuda.device_count())]
     network = IDFaceGAN(generator, discriminator, options, hyperparams, device_ids)
 
     ## Start Training
