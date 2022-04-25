@@ -4,7 +4,10 @@ import os
 import random
 from model.optimization import init_weights, define_network
 
-def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, age_fake, losses, step, epoch, hyperparams, with_print_logs=True):
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+
+def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_real, age_fake, age_clf, losses, step, epoch, hyperparams, with_print_logs=True, experiment="train_dnn"):
 
     for k,v in losses.items():
         tb_writer_loss.add_scalar(
@@ -24,13 +27,23 @@ def write_logs_tb(tb_writer_loss, tb_writer_fake, tb_writer_real, img_fake, img_
         "Real images", img_real, global_step=step
     )
 
+    # Showing the age classification
+    if age_clf is not None:
+        label_age_clf = "images of age "+str((age_clf+1)*10)
+        tb_writer_fake.add_image(
+            'Age_classifier/{}'.format(label_age_clf), img_fake, global_step=step
+        )
+
     if with_print_logs :
-        print(f"Epoch [{epoch}/{hyperparams.n_epochs}]", sep=' ')
+        print()
+        print(f"Epoch [{epoch}/{hyperparams.n_epochs}] ({experiment})", sep=' ')
         for k,v in losses.items():
             print(f"{k} : [{v:.7f}]", sep=' - ', end=' - ')
 
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
 
-def write_logs_tb_cyclegan(tb_writer_loss, tb_writer_fake, tb_writer_real, images_fakes, images_real, losses, step, epoch, hyperparams, with_print_logs=True):
+def write_logs_tb_cyclegan(tb_writer_loss, tb_writer_fake, tb_writer_real, images_fakes, images_real, losses, step, epoch, hyperparams, with_print_logs=True, experiment="train_dnn"):
 
     for k,v in losses.items():
         tb_writer_loss.add_scalar(
@@ -63,21 +76,27 @@ def write_logs_tb_cyclegan(tb_writer_loss, tb_writer_fake, tb_writer_real, image
     )
 
     if with_print_logs :
-        print(f"Epoch [{epoch}/{hyperparams.n_epochs}]", sep=' ')
+        print()
+        print(f"Epoch [{epoch}/{hyperparams.n_epochs}] ({experiment})", sep=' ')
         for k,v in losses.items():
             print(f"{k} : [{v:.7f}]", sep=' - ', end=' - ')
-            
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#        
     
 def compute_nbr_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def setup_network(network, hyperparams, type="generator"):
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+
+def setup_network(network, hyperparams, type="generator", init_type="kaiming"):
     print("-----------------------------------------------------")
     print(f"[INFO] Number of trainable parameters for the {type} : {compute_nbr_parameters(network)}")
     print("-----------------------------------------------------")
 
     print(f"[INFO] Initializing the networks...")
-    network=init_weights(network, init_type='kaiming')
+    network=init_weights(network, init_type)
     print("-----------------------------------------------------")
 
     device_ids = [i for i in range(torch.cuda.device_count())]
@@ -86,6 +105,9 @@ def setup_network(network, hyperparams, type="generator"):
 
     network=define_network(network, hyperparams.device, device_ids)
     print("-----------------------------------------------------")
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
 
 def load_model(model, PATH, device='cuda', mode='test'):
     print(f'[INFO] Loading model from {PATH} into device: {device} in mode:{mode}.')
@@ -100,6 +122,8 @@ def load_model(model, PATH, device='cuda', mode='test'):
 
     return model
 
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
 
 def fix_seed(seed=42):
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -111,6 +135,9 @@ def fix_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+
 def create_checkpoints_dir(path):
     try :
         path.mkdir(parents=True, exist_ok=False)
@@ -119,6 +146,18 @@ def create_checkpoints_dir(path):
     else:
         print(f'[INFO] Checkpoint directory has been created')
 
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+
 def print_kwargs(**kwargs):
     for key, value in kwargs.items():
         print("The value of {} is {}".format(key, value))
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
+
+def get_last_lr(optimizer):
+    return optimizer.param_groups[0]['lr']
+
+# -----------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#
