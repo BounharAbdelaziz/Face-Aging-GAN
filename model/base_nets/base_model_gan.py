@@ -22,8 +22,8 @@ class BaseModelGAN(BaseModel):
 
         # Loss functions
         self.loss_names = []
-        self.loss_GEN = GenLoss(options.gan_type).to(self.hyperparams.device)
-        self.loss_DISC = DiscLoss(options.gan_type).to(self.hyperparams.device)
+        self.loss_G = GenLoss(options.gan_type).to(self.hyperparams.device)
+        self.loss_D = DiscLoss(options.gan_type).to(self.hyperparams.device)
         self.loss_names.append("loss_G")
         self.loss_names.append("loss_D")
 
